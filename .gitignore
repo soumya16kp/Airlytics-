@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# Model/Data (user wants to include, so no ignore for .tif/.pkl)
+# backend/core/predictors_2026.tif
+# backend/core/rf_regularized.pkl
+
+# Node / JS
+node_modules/
+dist/
+build/
+.vscode/
+
+# Database (User explicitly wants this included)
+# !backend/db.sqlite3
