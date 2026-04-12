@@ -69,20 +69,81 @@ def get_live_weather(lat, lon, timeout=3):
         return get_climate_for_month(month)
 
 
-def get_weather_for_day(lat, lon, day_of_year, year=2026):
+def get_forecast_weather(lat, lon, date_str, timeout=3):
+    """Fetch daily aggregated hourly forecast including PBL boundary_layer_height."""
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": date_str,
+        "end_date": date_str,
+        "hourly": "temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,shortwave_radiation,boundary_layer_height",
+        "timezone": "auto"
+    }
+    
+    try:
+        resp = requests.get(url, params=params, timeout=timeout)
+        resp.raise_for_status()
+        data = resp.json()
+        h = data.get('hourly', {})
+        if not h or not h.get('temperature_2m'): return None
+        
+        # Average the hourly values to get a daily mean
+        def mean_val(key):
+            vals = [v for v in h.get(key, []) if v is not None]
+            return sum(vals) / len(vals) if vals else 0.0
+            
+        return {
+            'temp': mean_val('temperature_2m'),
+            'cld': mean_val('cloud_cover'),
+            'solar': mean_val('shortwave_radiation'),
+            'wind_speed': mean_val('wind_speed_10m'),
+            'wind_dir': mean_val('wind_direction_10m'),
+            'pbl': max(100.0, mean_val('boundary_layer_height')), # Prevent zero PBL
+            'dewpoint': 18.0,
+            'pressure': 1010.0,
+        }
+    except Exception as e:
+        print(f"[weather_service] Open-Meteo forecast failed for {date_str}: {e}")
+        return None
+
+
+def get_weather_for_day(lat, lon, day_of_year, year=2026, pollutant=None):
     """
     Get weather data for a specific day of the year.
-    - For dates within ±2 days of today: tries live API.
-    - Otherwise: uses monthly climate averages for the target month.
+    - Path 1: For dates within ±14 days of today: uses Open-Meteo Forecast API.
+    - Path 2: For future dates (>14 days), if pollutant is so2/o3:
+              uses pixel-specific average from 5-year CSV historical data.
+    - Path 3: Fallback: uses monthly climate averages for target month.
     """
     today = datetime.datetime.now()
-    target = datetime.datetime(year, 1, 1) + datetime.timedelta(days=day_of_year - 1)
+    try:
+        target = datetime.datetime(year, 1, 1) + datetime.timedelta(days=day_of_year - 1)
+    except ValueError: # handle leap years edge cases gracefully
+        target = today + datetime.timedelta(days=day_of_year - today.timetuple().tm_yday)
+        
+    delta_days = (target - today).days
 
-    # If within 2 days of today, try live API
-    if abs((target - today).days) <= 2:
-        return get_live_weather(lat, lon)
+    # 1. Forecast range (near future or recent past)
+    if -2 <= delta_days <= 14:
+        w = get_forecast_weather(lat, lon, target.strftime('%Y-%m-%d'))
+        if w: return w
+        
+        # If forecast fails, fallback to get_live_weather for today
+        if abs(delta_days) <= 1:
+            return get_live_weather(lat, lon)
 
-    # Otherwise use climate averages for the target month
+    # 2. Pixel-specific Historical Average (far future)
+    if pollutant in ['so2', 'o3']:
+        try:
+            from historical_data_service import so2_history, o3_history
+            service = so2_history if pollutant == 'so2' else o3_history
+            hist_avg = service.get_pixel_historical_avg(lat, lon, day_of_year)
+            if hist_avg: return hist_avg
+        except Exception as e:
+            print(f"[weather_service] Historical avg fallback failed: {e}")
+
+    # 3. Fallback to climate averages
     return get_climate_for_month(target.month)
 
 

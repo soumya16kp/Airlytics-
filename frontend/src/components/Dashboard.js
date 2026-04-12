@@ -22,7 +22,8 @@ const POLLUTANT_LABELS = {
   o3:  { name: 'O₃',  full: 'Ozone',              unit: 'DU',      whoLimit: 100 },
 };
 
-const TIME_RANGES = ['1D', '1W', '1M', '3M', '6M', '1Y'];
+const FUTURE_RANGES = ['1D', '1W', '1M', '3M', '6M', '1Y'];
+const HISTORY_RANGES = ['H1M', 'H3M', 'H1Y', 'H3Y', 'H5Y'];
 
 // Prediction API router by pollutant
 const predictByType = {
@@ -257,6 +258,8 @@ const Dashboard = ({ pollutantType = 'co' }) => {
 
   // Derived weather data from prediction response
   const weatherData = predData?.weather_snapshot || null;
+
+  const hasHistory = pollutantType === 'so2' || pollutantType === 'o3';
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -498,21 +501,26 @@ const Dashboard = ({ pollutantType = 'co' }) => {
               </div>
             </div>
 
+            {/* Global Time Controls (Future) */}
+            <div className="chart-card wide card-enter" style={{ padding: '16px 24px', display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div className="time-selector-group" style={{ display: 'flex', alignItems: 'center' }}>
+                <div style={{fontSize: '11px', fontWeight: 700, color: '#64748b', marginRight: '12px', letterSpacing: '0.05em'}}>FORECAST TIMELINE</div>
+                {FUTURE_RANGES.map(r => (
+                  <button
+                    key={r}
+                    className={`time-pill ${timeRange === r ? 'active' : ''}`}
+                    onClick={() => setTimeRange(r)}
+                  >{r}</button>
+                ))}
+              </div>
+            </div>
+
             {/* VS WHO Standard — Bar Chart */}
             <div className="chart-card wide card-enter">
               <div className="card-header">
                 <div className="title-with-badge">
                   <h3>{pollutant.name} vs WHO Standard</h3>
                   <span className="badge-ai">Real Model</span>
-                </div>
-                <div className="time-selector-group">
-                  {TIME_RANGES.map(r => (
-                    <button
-                      key={r}
-                      className={`time-pill ${timeRange === r ? 'active' : ''}`}
-                      onClick={() => setTimeRange(r)}
-                    >{r}</button>
-                  ))}
                 </div>
               </div>
               <div className="chart-container">
@@ -561,18 +569,6 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                 </div>
               </div>
 
-              <div className="time-controls">
-                <div className="time-selector-group">
-                  {TIME_RANGES.map(r => (
-                    <button
-                      key={r}
-                      className={`time-pill ${timeRange === r ? 'active' : ''}`}
-                      onClick={() => setTimeRange(r)}
-                    >{r}</button>
-                  ))}
-                </div>
-              </div>
-
               <div className="chart-container">
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={timeline}>
@@ -608,6 +604,67 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                 </p>
               </div>
             </div>
+
+            {/* Historical Comparison Table */}
+            {hasHistory && predData?.comparison_table && (
+              <div className={`chart-card wide card-enter`}>
+                <div className="card-header" style={{ marginBottom: '24px' }}>
+                  <div className="title-with-badge">
+                    <h3>📊 Model Accuracy — Historical Validation</h3>
+                    <span className="badge-ai">Ground Truth Comparison</span>
+                  </div>
+                  <p className="prediction-note" style={{marginTop: 8, fontSize: '12px'}}>
+                    Compares Open-Meteo ERA5 weather driven ML predictions against real satellite observations.
+                  </p>
+                </div>
+                
+                <div className="table-responsive" style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '13px', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>Period</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>🔮 Model Predicted (Avg)</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>📡 Real Observed (Avg)</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>Variance</th>
+                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>Data Points</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {predData.comparison_table.map((row, idx) => {
+                        const isMissing = row.model_predicted_avg === null || row.data_points === 0;
+                        const varColor = Math.abs(row.variance_pct) <= 15 ? '#10b981' : Math.abs(row.variance_pct) <= 30 ? '#f59e0b' : '#ef4444';
+                        const formatter = (v) => v === null ? 'N/A' : (v >= 1000 ? v.toExponential(2) : v < 0.01 ? v.toExponential(2) : v.toFixed(5));
+
+                        return (
+                          <tr key={idx} style={{ 
+                            borderBottom: '1px solid #f1f5f9',
+                            background: 'transparent'
+                          }}>
+                            <td style={{ padding: '16px 12px', fontWeight: 500, color: '#475569' }}>
+                              {row.period}
+                            </td>
+                            <td style={{ padding: '16px 12px', fontFamily: 'monospace', fontSize: '14px', color: '#334155' }}>
+                              {formatter(row.model_predicted_avg)}
+                              {!isMissing && <span style={{fontSize: '11px', color: '#94a3b8', marginLeft: 6}}>{pollutant.unit}</span>}
+                            </td>
+                            <td style={{ padding: '16px 12px', fontFamily: 'monospace', fontSize: '14px', color: '#334155' }}>
+                              {formatter(row.real_observed_avg)}
+                              {!isMissing && <span style={{fontSize: '11px', color: '#94a3b8', marginLeft: 6}}>{pollutant.unit}</span>}
+                            </td>
+                            <td style={{ padding: '16px 12px', fontWeight: 600, color: isMissing ? '#94a3b8' : varColor }}>
+                              {isMissing ? 'N/A' : `${row.variance_pct > 0 ? '+' : ''}${row.variance_pct.toFixed(1)}%`}
+                            </td>
+                            <td style={{ padding: '16px 12px', color: '#64748b' }}>
+                              {row.data_points} <span style={{fontSize: '11px'}}>months</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
           </div>
           </>

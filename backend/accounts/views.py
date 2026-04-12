@@ -91,6 +91,9 @@ def format_prediction_response(result, extra_info=None, coords=None):
         'range':           result.get('range', '1Y'),
         'pollutant':       result.get('pollutant', 'unknown'),
     }
+    if 'comparison_table' in result:
+        resp['comparison_table'] = result['comparison_table']
+        
     if extra_info:
         resp.update(extra_info)
     # Attach live weather snapshot for the predicted location
@@ -104,7 +107,7 @@ def format_prediction_response(result, extra_info=None, coords=None):
     return resp
 
 
-VALID_RANGES = {'1D', '1W', '1M', '3M', '6M', '1Y'}
+VALID_RANGES = {'1D', '1W', '1M', '3M', '6M', '1Y', 'H1M', 'H3M', 'H1Y', 'H3Y', 'H5Y'}
 
 def _get_range(request):
     """Extract and validate the range query parameter."""

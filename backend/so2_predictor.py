@@ -170,7 +170,7 @@ class SO2Predictor:
         for pt in points:
             doy   = pt['day_of_year']
             month = pt['month']
-            weather = get_weather_for_day(lat, lon, doy)
+            weather = get_weather_for_day(lat, lon, doy, pt['year'], pollutant='so2')
             raw = self._build_features(lat, lon, doy, month, weather, elev=elev)
             value = self._predict_single(raw)
 
@@ -191,13 +191,23 @@ class SO2Predictor:
         if not all_values:
             return {'error': 'No valid SO2 predictions could be generated.'}
 
+        # Automatically build the historical comparison table
+        from historical_data_service import so2_history
+        comparison_table = so2_history.build_comparison_data(lat, lon, self._build_features_and_predict)
+
         return {
             'base_value_2026': round(float(np.mean(all_values)), 6),
             'timeline':        timeline,
+            'comparison_table': comparison_table,
             'range':           range_str,
             'pollutant':       'so2',
             'error':           None,
         }
+
+    def _build_features_and_predict(self, weather, lat, lon, doy, month, elev, pop):
+        """Helper for historical_data_service to run the full pipeline."""
+        raw = self._build_features(lat, lon, doy, month, weather, elev=elev, pop=pop)
+        return self._predict_single(raw)
 
 
 def _month_name(m):

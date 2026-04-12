@@ -147,7 +147,7 @@ class O3Predictor:
 
         for pt in points:
             doy = pt['day_of_year']
-            weather = get_weather_for_day(lat, lon, doy)
+            weather = get_weather_for_day(lat, lon, doy, pt['year'], pollutant='o3')
             raw = self._build_features(lat, lon, doy, weather, elev=elev)
             value = self._predict_single(raw)
 
@@ -168,13 +168,25 @@ class O3Predictor:
         if not all_values:
             return {'error': 'No valid predictions could be generated.'}
 
+        # Automatically build the historical comparison table
+        from historical_data_service import o3_history
+        comparison_table = o3_history.build_comparison_data(lat, lon, self._build_features_and_predict)
+
         return {
             'base_value_2026': round(float(np.mean(all_values)), 6),
             'timeline':        timeline,
+            'comparison_table': comparison_table,
             'range':           range_str,
             'pollutant':       'o3',
             'error':           None,
         }
+
+    def _build_features_and_predict(self, weather, lat, lon, doy, month, elev, pop):
+        """Helper for historical_data_service to run the full pipeline."""
+        # Note: o3_predictor build_features doesn't take month, but historical service passes it 
+        # so we ignore the month parameter here
+        raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop)
+        return self._predict_single(raw)
 
 
 def _month_name(m):
