@@ -2,3 +2,11 @@ django
 djangorestframework
 djangorestframework-simplejwt
 django-cors-headers
+numpy
+rasterio
+joblib
+scikit-learn
+xgboost
+lightgbm
+catboost
+requests

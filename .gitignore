@@ -19,3 +19,12 @@ build/
 
 # Database (User explicitly wants this included)
 # !backend/db.sqlite3
+
+# Historical Weather Data
+no2_weather_data/
+o3_weather_data/
+so2_weather_data/
+
+backend/*.pkl
+backend/*.json
+backend/*.tif

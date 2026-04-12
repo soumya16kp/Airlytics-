@@ -1,0 +1,288 @@
+/* ===== Pollutant Navbar — Green Accent on Dark Bar (Matching Login Green) ===== */
+
+.pollutant-navbar-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px 20px;
+  background: #d8d8d8;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.2);
+  animation: navSlideIn 0.6s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+
+/* Grid overlay — same pattern as login page */
+.pollutant-navbar-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(34, 197, 94, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(34, 197, 94, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Green shimmer line at bottom */
+.pollutant-navbar-wrapper::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #22c55e, transparent);
+  animation: shimmerNav 4s ease-in-out infinite;
+}
+
+@keyframes shimmerNav {
+
+  0%,
+  100% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes navSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Container for nav links — centered, pill group */
+.pollutant-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.15);
+  border-radius: 14px;
+  padding: 5px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Individual nav link */
+.pollutant-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 22px;
+  border-radius: 10px;
+  text-decoration: none;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.45);
+  background: transparent;
+  border: 1px solid transparent;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Hover */
+.pollutant-nav-link:hover {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.2);
+  transform: translateY(-1px);
+}
+
+.pollutant-nav-link:hover .pollutant-icon svg {
+  filter: drop-shadow(0 0 6px rgba(34, 197, 94, 0.5));
+}
+
+/* Active state — Green glow */
+.pollutant-nav-link.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(21, 128, 61, 0.2));
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow:
+    0 0 20px rgba(34, 197, 94, 0.15),
+    0 0 40px rgba(34, 197, 94, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Active bottom glow bar */
+.pollutant-nav-link.active::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20%;
+  right: 20%;
+  height: 2px;
+  background: #22c55e;
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  animation: activeGlow 2s ease-in-out infinite;
+}
+
+@keyframes activeGlow {
+
+  0%,
+  100% {
+    opacity: 0.7;
+    box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 14px rgba(34, 197, 94, 0.8);
+  }
+}
+
+/* Icon container */
+.pollutant-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.pollutant-icon svg {
+  width: 20px;
+  height: 20px;
+  transition: all 0.3s ease;
+}
+
+/* Icon colors — green tones */
+.pollutant-nav-link .pollutant-icon svg {
+  color: rgba(34, 197, 94, 0.45);
+  stroke: rgba(34, 197, 94, 0.45);
+}
+
+.pollutant-nav-link:hover .pollutant-icon svg,
+.pollutant-nav-link.active .pollutant-icon svg {
+  color: #22c55e;
+  stroke: #22c55e;
+}
+
+/* Chemical formula */
+.pollutant-formula {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pollutant-formula sub {
+  font-size: 0.7em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Full pollutant name — visible on wider screens */
+.pollutant-name {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.5;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .pollutant-name {
+    display: block;
+  }
+}
+
+/* Active text glow */
+.pollutant-nav-link.active .pollutant-formula {
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
+}
+
+.pollutant-nav-link.active .pollutant-name {
+  opacity: 0.85;
+  color: rgba(34, 197, 94, 0.8);
+}
+
+/* Live dot on active tab */
+.pollutant-live-dot {
+  width: 6px;
+  height: 6px;
+  background: #22c55e;
+  border-radius: 50%;
+  display: none;
+  box-shadow: 0 0 6px #22c55e;
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+.pollutant-nav-link.active .pollutant-live-dot {
+  display: block;
+}
+
+@keyframes livePulse {
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: scale(1.4);
+  }
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 640px) {
+  .pollutant-navbar-wrapper {
+    padding: 8px 10px;
+  }
+
+  .pollutant-nav-links {
+    gap: 2px;
+    padding: 4px;
+  }
+
+  .pollutant-nav-link {
+    padding: 7px 12px;
+    gap: 5px;
+    font-size: 12px;
+  }
+
+  .pollutant-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .pollutant-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+@media (max-width: 420px) {
+  .pollutant-nav-link {
+    padding: 6px 8px;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .pollutant-formula {
+    font-size: 11px;
+  }
+}

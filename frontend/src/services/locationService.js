@@ -53,26 +53,71 @@ const updateProfile = async (profileData) => {
   return response.data;
 };
 
+// ── CO ENDPOINTS ────────────────────────────────────────────────────────────
+
 const getMapData = async () => {
   const response = await api.get('map-data/');
   return response.data;
 };
 
-/**
- * Calls the live RF model for a given town.
- * Returns { town_name, district, latitude, longitude, base_co_2026, timeline }
- */
-const predictCO = async (townId) => {
-  const response = await api.get(`predict-co/?town=${townId}`);
+const predictCO = async (townId, range = '1Y') => {
+  const response = await api.get(`predict-co/?town=${townId}&range=${range}`);
   return response.data;
 };
 
-/**
- * Runs RF model at any arbitrary lat/lon (for draggable map marker).
- * Returns { base_co_2026, march_co_2026, lat, lon }
- */
-const predictCOAt = async (lat, lon) => {
-  const response = await api.get(`predict-co-at/?lat=${lat}&lon=${lon}`);
+const predictCOAt = async (lat, lon, range = '1Y') => {
+  const response = await api.get(`predict-co-at/?lat=${lat}&lon=${lon}&range=${range}`);
+  return response.data;
+};
+
+// ── NO2 ENDPOINTS ───────────────────────────────────────────────────────────
+
+const getMapDataNO2 = async () => {
+  const response = await api.get('map-data-no2/');
+  return response.data;
+};
+
+const predictNO2 = async (townId, range = '1Y') => {
+  const response = await api.get(`predict-no2/?town=${townId}&range=${range}`);
+  return response.data;
+};
+
+const predictNO2At = async (lat, lon, range = '1Y') => {
+  const response = await api.get(`predict-no2-at/?lat=${lat}&lon=${lon}&range=${range}`);
+  return response.data;
+};
+
+// ── O3 ENDPOINTS ────────────────────────────────────────────────────────────
+
+const getMapDataO3 = async () => {
+  const response = await api.get('map-data-o3/');
+  return response.data;
+};
+
+const predictO3 = async (townId, range = '1Y') => {
+  const response = await api.get(`predict-o3/?town=${townId}&range=${range}`);
+  return response.data;
+};
+
+const predictO3At = async (lat, lon, range = '1Y') => {
+  const response = await api.get(`predict-o3-at/?lat=${lat}&lon=${lon}&range=${range}`);
+  return response.data;
+};
+
+// ── SO2 ENDPOINTS ───────────────────────────────────────────────────────────
+
+const getMapDataSO2 = async () => {
+  const response = await api.get('map-data-so2/');
+  return response.data;
+};
+
+const predictSO2 = async (townId, range = '1Y') => {
+  const response = await api.get(`predict-so2/?town=${townId}&range=${range}`);
+  return response.data;
+};
+
+const predictSO2At = async (lat, lon, range = '1Y') => {
+  const response = await api.get(`predict-so2-at/?lat=${lat}&lon=${lon}&range=${range}`);
   return response.data;
 };
 
@@ -82,9 +127,22 @@ const locationService = {
   getEmissions,
   getProfile,
   updateProfile,
+  // CO
   getMapData,
   predictCO,
   predictCOAt,
+  // NO2
+  getMapDataNO2,
+  predictNO2,
+  predictNO2At,
+  // O3
+  getMapDataO3,
+  predictO3,
+  predictO3At,
+  // SO2
+  getMapDataSO2,
+  predictSO2,
+  predictSO2At,
 };
 
 export default locationService;
