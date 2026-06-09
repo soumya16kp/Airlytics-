@@ -13,15 +13,17 @@ import os
 import numpy as np
 import joblib
 import math
+import pandas as pd
 
 from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
+from grid_data_service import grid_data_service
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'ODISHA_ (O3_model).pkl')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'OdishaO3Model.pkl')
 
 # Default O3 lag value (mean tropospheric O3 in DU for Odisha region)
 DEFAULT_O3_LAG = 35.0
-DEFAULT_POP = 500000
+DEFAULT_POP = 5000
 
 
 class O3Predictor:
@@ -56,33 +58,46 @@ class O3Predictor:
 
     def _build_features(self, lat, lon, doy, weather, elev=None, pop=None):
         """Build the 15-feature vector for one prediction."""
+        import warnings
         w = weather
-        cluster = int(self._kmeans.predict(np.array([[lat, lon]]))[0])
+        coords_df = pd.DataFrame([[lat, lon]], columns=['lat', 'lon'])
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            cluster = int(self._kmeans.predict(coords_df)[0])
 
-        _elev = elev if elev is not None else 100.0
-        _pop  = pop if pop is not None else DEFAULT_POP
-        _pbl  = w['pbl']
-        _temp = w['temp']
-        _solar = w['solar']
-        _cld  = w['cld']
-        _ws   = w['wind_speed']
+        _elev  = elev if elev is not None else 100.0
+        _pop   = pop if pop is not None else DEFAULT_POP
+        _pbl   = max(1.0, float(w.get('pbl', 800.0)))
+        _temp  = float(w.get('temp', 28.0))
+        _temp_k = _temp + 273.15  # Model was trained on Kelvin (ERA5)
+        # Solar must always be present — fallback to April average if missing
+        _solar = float(w.get('solar', 580.0))
+        _cld   = float(w.get('cld', 20.0))
+        _ws    = float(w.get('wind_speed', 3.0))
 
         # Derived features
         photo_index = _solar * (1.0 - _cld / 100.0)
-        ozone_trap  = _temp / (_ws + 0.1)
+        ozone_trap  = _temp_k / (_ws + 0.1)
         o3_lag      = DEFAULT_O3_LAG
 
-        # Feature vector in the exact order the model expects
-        raw = np.array([[
-            lat, lon, cluster, _pbl, _temp, _solar, _elev, _pop, _cld,
+        # Feature vector as DataFrame
+        # Ensure lat/lon are rounded to match 0.1 degree grid training
+        df = pd.DataFrame([[
+            round(lat, 1), round(lon, 1), cluster, _pbl, _temp_k, _solar, _elev, _pop, _cld,
             day_sin(doy), day_cos(doy), _ws, photo_index, ozone_trap, o3_lag
-        ]], dtype=np.float64)
+        ]], columns=self._features)
 
-        return raw
+        return df
 
     def _predict_single(self, raw_features):
         """Run all 3 sub-models and average."""
-        scaled = self._scaler.transform(raw_features)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            scaled_arr = self._scaler.transform(raw_features)
+        
+        # Convert back to DataFrame with feature names so LGBM/XGB don't warn
+        scaled = pd.DataFrame(scaled_arr, columns=self._features)
 
         preds = []
         # LightGBM
@@ -112,7 +127,7 @@ class O3Predictor:
 
     # ── Public API ───────────────────────────────────────────────────────────
 
-    def predict_for_town(self, town, range_str='1Y'):
+    def predict_for_town(self, town, range_str='1Y', overrides=None):
         """
         Given a Town model instance, returns predictions for the requested range.
         """
@@ -123,32 +138,48 @@ class O3Predictor:
         if town.latitude is None or town.longitude is None:
             return {'error': f"Town '{town.name}' has no coordinates."}
 
-        return self._predict_timeline(town.latitude, town.longitude, range_str)
+        return self._predict_timeline(town.latitude, town.longitude, range_str, overrides=overrides)
 
-    def predict_at_coords(self, lat, lon, range_str='1Y'):
+    def predict_at_coords(self, lat, lon, range_str='1Y', overrides=None):
         """Predict O3 at arbitrary (lat, lon)."""
         self._load()
         if self._error:
             return {'error': self._error}
 
-        result = self._predict_timeline(lat, lon, range_str)
+        result = self._predict_timeline(lat, lon, range_str, overrides=overrides)
+        if result.get('error'):
+            return result  # Don't try to add keys to an error dict
         result['lat'] = lat
         result['lon'] = lon
         result['is_custom'] = True
         return result
 
-    def _predict_timeline(self, lat, lon, range_str):
+    def _predict_timeline(self, lat, lon, range_str, overrides=None):
         """Generate timeline of real model predictions."""
         points = generate_timeline_points(range_str)
-        elev = get_elevation(lat, lon)
+        
+        # Get baseline from spatial grid
+        grid_pop, grid_elev = grid_data_service.get_data_at(lat, lon)
+        
+        elev = grid_elev
+        if overrides and 'elev' in overrides: elev = float(overrides['elev'])
+        
+        pop = float(overrides.get('pop', grid_pop)) if overrides else grid_pop
 
         timeline = []
         all_values = []
 
         for pt in points:
             doy = pt['day_of_year']
-            weather = get_weather_for_day(lat, lon, doy, pt['year'], pollutant='o3')
-            raw = self._build_features(lat, lon, doy, weather, elev=elev)
+            hour = pt.get('hour')
+            weather = get_weather_for_day(lat, lon, doy, pt['year'], pollutant='o3', hour=hour)
+            
+            # Apply overrides
+            if overrides:
+                for k in ['temp', 'cld', 'wind_speed', 'solar', 'pbl']:
+                    if k in overrides: weather[k] = float(overrides[k])
+
+            raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop)
             value = self._predict_single(raw)
 
             if value is None:
@@ -178,6 +209,7 @@ class O3Predictor:
             'comparison_table': comparison_table,
             'range':           range_str,
             'pollutant':       'o3',
+            'weather_snapshot': get_weather_for_day(lat, lon, points[0]['day_of_year'], points[0]['year'], pollutant='o3'),
             'error':           None,
         }
 

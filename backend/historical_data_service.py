@@ -248,6 +248,18 @@ class HistoricalDataService:
         if pixel_df is None or pixel_df.empty:
             return [self._empty_row(p[0], p[1]) for p in COMPARISON_PERIODS]
 
+        # Filter to match training conditions (clear sky + detectable pollutant)
+        if self._pollutant == 'so2':
+            # Check if columns exist before filtering to avoid KeyErrors
+            if 'cld' in pixel_df.columns and 'so2' in pixel_df.columns:
+                pixel_df = pixel_df[(pixel_df['cld'] < 0.2) & (pixel_df['so2'] > 0)].copy()
+        elif self._pollutant == 'o3':
+            if 'o3' in pixel_df.columns:
+                pixel_df = pixel_df[pixel_df['o3'] > 0].copy()
+
+        if pixel_df.empty:
+            return [self._empty_row(p[0], p[1]) for p in COMPARISON_PERIODS]
+
         # Group by year-month for monthly aggregation
         pixel_df['ym'] = pixel_df['date_parsed'].dt.to_period('M')
 
@@ -288,9 +300,22 @@ class HistoricalDataService:
                       f"for {row['ym']}: {e}")
                 predicted = None
 
-            # Apply scale to raw Sentinel values so they match model's display unit (DU)
-            scale = 1000000.0 if self._pollutant == 'so2' else 1000.0
-            observed = float(row[self._value_col]) * scale
+            # ── Unit alignment for comparison table ──────────────────────────
+            # The SO2 model was trained on so2_raw * 1e6 (µmol/m²).
+            # For the comparison table we keep BOTH in the same native training
+            # unit so the variance reflects real model error, not a unit mismatch.
+            if self._pollutant == 'so2':
+                # Observed: raw Sentinel mol/m² → µmol/m² (same as training target)
+                observed = float(row[self._value_col]) * 1_000_000.0
+                # Predicted: model already outputs in µmol/m² – no conversion needed
+                if predicted is None:
+                    predicted = 0.0
+            else:
+                # O3: keep in Dobson-scaled units
+                scale = 1000.0
+                if predicted is None:
+                    predicted = 0.0
+                observed = float(row[self._value_col]) * scale
 
             monthly_results.append({
                 'ym': row['ym'],

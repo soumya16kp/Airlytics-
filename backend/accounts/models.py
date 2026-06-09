@@ -13,6 +13,8 @@ class Town(models.Model):
     district = models.ForeignKey(District, on_delete=models.CASCADE, related_name='towns')
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
+    pop = models.FloatField(null=True, blank=True)
+    elevation = models.FloatField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.name}, {self.district.name}"

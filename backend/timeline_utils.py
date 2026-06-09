@@ -31,7 +31,16 @@ def generate_timeline_points(range_str):
     points = []
 
     if range_str == '1D':
-        _add_point(points, today)
+        # Generate 24 hourly points for today
+        for hour in range(24):
+            points.append({
+                'day_of_year': today.timetuple().tm_yday,
+                'month':       today.month,
+                'date':        today.isoformat(),
+                'hour':        hour,
+                'label':       f"{hour:02d}:00",
+                'year':        today.year,
+            })
 
     elif range_str == '1W':
         for i in range(7):

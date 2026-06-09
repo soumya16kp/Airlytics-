@@ -1,16 +1,31 @@
-"""
-weather_service.py
-==================
-Fetches live weather data from Open-Meteo API for O3/SO2/CO predictors.
-Falls back to Odisha monthly climate averages when API is unavailable.
-"""
-
 import requests
 import datetime
 import math
+from functools import lru_cache
+
+# Caching to prevent hitting API limits
+@lru_cache(maxsize=128)
+def _cached_forecast_api(lat, lon, date_str):
+    """Internal helper to cache API responses for 128 unique (location, day) pairs."""
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": date_str,
+        "end_date": date_str,
+        "hourly": "temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,shortwave_radiation,boundary_layer_height",
+        "timezone": "auto"
+    }
+    try:
+        resp = requests.get(url, params=params, timeout=5) # Increased to 5s for stability
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"[weather_service] API call failed for {lat},{lon} on {date_str}: {e}")
+        return None
 
 # ── Odisha monthly climate averages ──────────────────────────────────────────
-# (temp_C, cloud_%, solar_W/m2, wind_speed_m/s, dewpoint_C, pressure_hPa, wind_dir_deg, pbl_m)
+# ... (keeping ODISHA_CLIMATE as is) ...
 ODISHA_CLIMATE = {
     1:  (22.0, 15, 450, 2.5, 12.0, 1015, 330, 800),
     2:  (25.0, 12, 500, 2.8, 13.0, 1013, 340, 900),
@@ -28,112 +43,87 @@ ODISHA_CLIMATE = {
 
 _KEYS = ('temp', 'cld', 'solar', 'wind_speed', 'dewpoint', 'pressure', 'wind_dir', 'pbl')
 
-
 def get_climate_for_month(month):
-    """Return Odisha climate averages for a given month (1-12)."""
     vals = ODISHA_CLIMATE[max(1, min(12, month))]
     return dict(zip(_KEYS, vals))
 
-
 def get_live_weather(lat, lon, timeout=3):
-    """
-    Fetch current weather from Open-Meteo API.
-    Returns dict with temp, cld, solar, wind_speed, dewpoint, pressure, wind_dir, pbl.
-    Falls back to climate averages on failure.
-    """
-    url = (
-        f"https://api.open-meteo.com/v1/forecast"
-        f"?latitude={lat}&longitude={lon}"
-        f"&current=temperature_2m,cloud_cover,shortwave_radiation,"
-        f"wind_speed_10m,wind_direction_10m,dewpoint_2m,surface_pressure"
-    )
-
-    try:
-        resp = requests.get(url, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
-        curr = data['current']
-        return {
-            'temp':       curr.get('temperature_2m', 30.0),
-            'cld':        curr.get('cloud_cover', 20.0),
-            'solar':      curr.get('shortwave_radiation', 400.0),
-            'wind_speed': curr.get('wind_speed_10m', 3.0),
-            'dewpoint':   curr.get('dewpoint_2m', 18.0),
-            'pressure':   curr.get('surface_pressure', 1010.0),
-            'wind_dir':   curr.get('wind_direction_10m', 200.0),
-            'pbl':        1000.0,   # Not available from Open-Meteo basic
-        }
-    except Exception as e:
-        print(f"[weather_service] Open-Meteo API failed: {e}, using climate fallback")
-        month = datetime.datetime.now().month
-        return get_climate_for_month(month)
-
-
-def get_forecast_weather(lat, lon, date_str, timeout=3):
-    """Fetch daily aggregated hourly forecast including PBL boundary_layer_height."""
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": lat,
-        "longitude": lon,
-        "start_date": date_str,
-        "end_date": date_str,
-        "hourly": "temperature_2m,cloud_cover,wind_speed_10m,wind_direction_10m,shortwave_radiation,boundary_layer_height",
-        "timezone": "auto"
-    }
+    """Quick snapshot for today's weather."""
+    # Round coords to 2 decimals to increase cache hits
+    date_str = datetime.datetime.now().strftime('%Y-%m-%d')
+    data = _cached_forecast_api(round(lat, 2), round(lon, 2), date_str)
     
-    try:
-        resp = requests.get(url, params=params, timeout=timeout)
-        resp.raise_for_status()
-        data = resp.json()
+    if data:
+        # Map the current hour from forecast to "live"
+        hour = datetime.datetime.now().hour
         h = data.get('hourly', {})
-        if not h or not h.get('temperature_2m'): return None
-        
-        # Average the hourly values to get a daily mean
-        def mean_val(key):
-            vals = [v for v in h.get(key, []) if v is not None]
-            return sum(vals) / len(vals) if vals else 0.0
-            
+        if h and 'temperature_2m' in h:
+            return {
+                'temp':       h['temperature_2m'][hour],
+                'cld':        h['cloud_cover'][hour],
+                'solar':      h['shortwave_radiation'][hour],
+                'wind_speed': h['wind_speed_10m'][hour],
+                'dewpoint':   18.0,
+                'pressure':   1010.0,
+                'wind_dir':   h['wind_direction_10m'][hour],
+                'pbl':        h['boundary_layer_height'][hour],
+            }
+    
+    # Fallback if no cache/api
+    return get_climate_for_month(datetime.datetime.now().month)
+
+def get_forecast_weather(lat, lon, date_str, timeout=5, hour=None):
+    """Fetch daily aggregated hourly forecast or a specific hour."""
+    data = _cached_forecast_api(round(lat, 2), round(lon, 2), date_str)
+    if not data: return None
+    
+    h = data.get('hourly', {})
+    if not h or not h.get('temperature_2m'): return None
+    
+    if hour is not None and 0 <= hour < len(h.get('temperature_2m', [])):
         return {
-            'temp': mean_val('temperature_2m'),
-            'cld': mean_val('cloud_cover'),
-            'solar': mean_val('shortwave_radiation'),
-            'wind_speed': mean_val('wind_speed_10m'),
-            'wind_dir': mean_val('wind_direction_10m'),
-            'pbl': max(100.0, mean_val('boundary_layer_height')), # Prevent zero PBL
+            'temp': h['temperature_2m'][hour],
+            'cld': h['cloud_cover'][hour],
+            'solar': h['shortwave_radiation'][hour],
+            'wind_speed': h['wind_speed_10m'][hour],
+            'wind_dir': h['wind_direction_10m'][hour],
+            'pbl': max(100.0, h['boundary_layer_height'][hour]),
             'dewpoint': 18.0,
             'pressure': 1010.0,
         }
-    except Exception as e:
-        print(f"[weather_service] Open-Meteo forecast failed for {date_str}: {e}")
-        return None
 
+    # Average the hourly values to get a daily mean
+    def mean_val(key):
+        vals = [v for v in h.get(key, []) if v is not None]
+        return sum(vals) / len(vals) if vals else 0.0
+        
+    return {
+        'temp': mean_val('temperature_2m'),
+        'cld': mean_val('cloud_cover'),
+        'solar': mean_val('shortwave_radiation'),
+        'wind_speed': mean_val('wind_speed_10m'),
+        'wind_dir': mean_val('wind_direction_10m'),
+        'pbl': max(100.0, mean_val('boundary_layer_height')),
+        'dewpoint': 18.0,
+        'pressure': 1010.0,
+    }
 
-def get_weather_for_day(lat, lon, day_of_year, year=2026, pollutant=None):
-    """
-    Get weather data for a specific day of the year.
-    - Path 1: For dates within ±14 days of today: uses Open-Meteo Forecast API.
-    - Path 2: For future dates (>14 days), if pollutant is so2/o3:
-              uses pixel-specific average from 5-year CSV historical data.
-    - Path 3: Fallback: uses monthly climate averages for target month.
-    """
+def get_weather_for_day(lat, lon, day_of_year, year=2026, pollutant=None, hour=None):
     today = datetime.datetime.now()
     try:
         target = datetime.datetime(year, 1, 1) + datetime.timedelta(days=day_of_year - 1)
-    except ValueError: # handle leap years edge cases gracefully
+    except ValueError:
         target = today + datetime.timedelta(days=day_of_year - today.timetuple().tm_yday)
         
     delta_days = (target - today).days
+    date_str = target.strftime('%Y-%m-%d')
 
     # 1. Forecast range (near future or recent past)
     if -2 <= delta_days <= 14:
-        w = get_forecast_weather(lat, lon, target.strftime('%Y-%m-%d'))
+        w = get_forecast_weather(lat, lon, date_str, hour=hour)
         if w: return w
-        
-        # If forecast fails, fallback to get_live_weather for today
-        if abs(delta_days) <= 1:
-            return get_live_weather(lat, lon)
 
-    # 2. Pixel-specific Historical Average (far future)
+    # 2. Pixel-specific Historical Average (far future or API failure)
     if pollutant in ['so2', 'o3']:
         try:
             from historical_data_service import so2_history, o3_history
@@ -146,9 +136,7 @@ def get_weather_for_day(lat, lon, day_of_year, year=2026, pollutant=None):
     # 3. Fallback to climate averages
     return get_climate_for_month(target.month)
 
-
 def get_elevation(lat, lon, timeout=3):
-    """Fetch elevation from Open-Meteo. Returns metres, fallback 100m."""
     try:
         url = f"https://api.open-meteo.com/v1/elevation?latitude={lat}&longitude={lon}"
         resp = requests.get(url, timeout=timeout)
@@ -157,4 +145,4 @@ def get_elevation(lat, lon, timeout=3):
         elev = data.get('elevation', [100.0])
         return float(elev[0]) if isinstance(elev, list) else float(elev)
     except Exception:
-        return 100.0   # Odisha average plains elevation
+        return 100.0

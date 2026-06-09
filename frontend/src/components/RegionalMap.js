@@ -27,10 +27,22 @@ function InitialView({ center, hasInitialized }) {
     const map = useMap();
     useEffect(() => {
         if (center && !hasInitialized.current) {
-            map.setView(center, 10, { animate: true });
+            map.setView(center, 12, { animate: true });
             hasInitialized.current = true;
         }
     }, [center, map, hasInitialized]);
+    return null;
+}
+
+function MapViewportSync({ center, zoom }) {
+    const map = useMap();
+
+    useEffect(() => {
+        if (center) {
+            map.setView(center, zoom, { animate: true });
+        }
+    }, [center, zoom, map]);
+
     return null;
 }
 
@@ -55,10 +67,10 @@ const POLLUTANT_INFO = {
 // Sentinel-5P pixel resolution ≈ 5.5 km → radius in metres
 const SENTINEL_RADIUS = 5500;   // 5.5 km
 const MODEL_RESOLUTION = {
-    co:  { radius: SENTINEL_RADIUS,  label: '~5.5 km Sentinel pixel',  zoom: 12 },
-    no2: { radius: SENTINEL_RADIUS,  label: '~5.5 km Sentinel pixel',  zoom: 11 },
-    so2: { radius: SENTINEL_RADIUS,  label: '~5.5 km Sentinel pixel',  zoom: 10 },
-    o3:  { radius: SENTINEL_RADIUS,  label: '~5.5 km Sentinel pixel',  zoom: 10 },
+    co:  { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
+    no2: { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
+    so2: { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
+    o3:  { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
 };
 
 // Colour scale per pollutant
@@ -127,6 +139,7 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
     const [dragError, setDragError] = useState(null);
 
     const markerRef = useRef(null);
+    const mapZoom = (MODEL_RESOLUTION[pollutantType] || MODEL_RESOLUTION.co).zoom;
 
     // ── On mount: get real GPS and run model immediately ─────────────────────
     const [geoStatus, setGeoStatus] = useState('idle'); // idle | loading | done | denied
@@ -171,6 +184,11 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
         setDragError(null);
         setDragResult(null);
 
+        // Notify dashboard immediately that we are loading a new location
+        if (onDataUpdate) {
+            onDataUpdate({ lat, lon: lng, latitude: lat, longitude: lng, loading: true });
+        }
+
         // No auto-zoom/pan — let the user control the map freely
 
         try {
@@ -194,8 +212,10 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
             }
 
             setDragResult(res);
+            return res;
         } catch (e) {
             setDragError(e.response?.data?.error || 'Prediction failed for this location.');
+            return null;
         } finally {
             setDragLoading(false);
         }
@@ -210,6 +230,24 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
         }, 80);
         return () => clearTimeout(t);
     }, [dragPos, dragResult, dragError, dragLoading]);
+
+    useEffect(() => {
+        if (!onDataUpdate || dragLoading) return;
+
+        if (dragResult && dragPos) {
+            onDataUpdate({
+                ...dragResult,
+                latitude: dragResult.latitude ?? dragPos.lat,
+                longitude: dragResult.longitude ?? dragPos.lon,
+                lat: dragPos.lat,
+                lon: dragPos.lon,
+                is_custom: true,
+            });
+        } else if (dragError) {
+            // Ensure dashboard stops loading if there was an error
+            onDataUpdate({ error: dragError, loading: false });
+        }
+    }, [dragLoading, dragPos, dragResult, dragError, onDataUpdate]);
 
 
     const onMarkerDragEnd = useCallback(() => {
@@ -227,30 +265,30 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
     const selectedColor = selectedTown?.value ? getPollutantColor(selectedTown.value, pollutantType) : '#4f46e5';
 
     return (
-        <div style={{ position: 'relative', height: '520px', borderRadius: '20px', overflow: 'hidden', border: '2px solid #e2e8f0' }}>
+        <div style={{ position: 'relative', height: '700px', borderRadius: '32px', overflow: 'hidden', boxShadow: 'var(--shadow-lg)', background: '#f8fafc' }}>
 
             {/* Legend */}
             <div style={{
-                position: 'absolute', bottom: 16, left: 16, zIndex: 1000,
-                background: 'rgba(255,255,255,0.94)', padding: '14px',
-                borderRadius: '16px', backdropFilter: 'blur(8px)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.12)', fontSize: '11px', color: '#1e293b',
-                border: '1px solid rgba(255,255,255,0.4)', minWidth: '180px'
+                position: 'absolute', bottom: 24, left: 24, zIndex: 1000,
+                background: 'rgba(255,255,255,0.9)', padding: '20px',
+                borderRadius: '24px', backdropFilter: 'blur(16px)',
+                boxShadow: 'var(--shadow-lg)', fontSize: '12px', color: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.4)', minWidth: '220px'
             }}>
-                <div style={{ fontWeight: 800, marginBottom: 10, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748b' }}>
-                    {(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).name} Gradient ({(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).unit})
+                <div style={{ fontWeight: 800, marginBottom: 12, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>
+                    {(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).name} Intensity ({(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).unit})
                 </div>
-                <div style={{ display: 'flex', gap: 2, height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ display: 'flex', gap: 3, height: 12, borderRadius: 6, overflow: 'hidden', marginBottom: 12 }}>
                     {['#059669', '#10b981', '#84cc16', '#f59e0b', '#f97316', '#ea580c', '#ef4444', '#991b1b'].map(c => (
                         <div key={c} style={{ flex: 1, background: c }} />
                     ))}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px', fontWeight: 700 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 800 }}>
                     <span style={{ color: '#059669' }}>SAFE ({(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).safeLabel})</span>
                     <span style={{ color: '#991b1b' }}>EXTREME ({(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).extremeLabel})</span>
                 </div>
-                <div style={{ marginTop: 10, borderTop: '1px solid #e2e8f0', paddingTop: 8, fontSize: '10px', color: '#64748b', fontStyle: 'italic' }}>
-                    💡 {(MODEL_RESOLUTION[pollutantType] || MODEL_RESOLUTION.co).label} · {(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).modelTag}
+                <div style={{ marginTop: 12, borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: 12, fontSize: '11px', color: '#64748b', fontWeight: 500 }}>
+                    💡 {(MODEL_RESOLUTION[pollutantType] || MODEL_RESOLUTION.co).label}
                 </div>
             </div>
 
@@ -258,48 +296,53 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
             {/* Geo status badge (top-left) */}
             {geoStatus === 'loading' && (
                 <div style={{
-                    position: 'absolute', top: 12, left: 12, zIndex: 1001,
-                    background: 'rgba(99,102,241,0.92)', color: 'white',
-                    padding: '6px 14px', borderRadius: '8px',
-                    fontSize: '12px', fontWeight: 600,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                    display: 'flex', alignItems: 'center', gap: 6
+                    position: 'absolute', top: 24, left: 24, zIndex: 1001,
+                    background: 'var(--primary)', color: 'white',
+                    padding: '10px 20px', borderRadius: '16px',
+                    fontSize: '13px', fontWeight: 700,
+                    boxShadow: 'var(--shadow-lg)',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    animation: 'fadeInUp 0.4s ease-out'
                 }}>
                     <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⏳</span>
-                    Fetching your GPS location…
+                    Detecting GPS Location…
                 </div>
             )}
             {geoStatus === 'done' && (
                 <div style={{
-                    position: 'absolute', top: 12, left: 12, zIndex: 1001,
-                    background: 'rgba(16,185,129,0.92)', color: 'white',
-                    padding: '6px 14px', borderRadius: '8px',
-                    fontSize: '12px', fontWeight: 600,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                    position: 'absolute', top: 24, left: 24, zIndex: 1001,
+                    background: 'var(--secondary)', color: 'white',
+                    padding: '10px 20px', borderRadius: '16px',
+                    fontSize: '13px', fontWeight: 700,
+                    boxShadow: 'var(--shadow-lg)',
+                    animation: 'fadeInUp 0.4s ease-out'
                 }}>
-                    📍 Your location detected — {(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).name} data loaded
+                    📍 Location detected
                 </div>
             )}
             {geoStatus === 'denied' && (
                 <div style={{
-                    position: 'absolute', top: 12, left: 12, zIndex: 1001,
-                    background: 'rgba(239,68,68,0.85)', color: 'white',
-                    padding: '6px 14px', borderRadius: '8px',
-                    fontSize: '12px', fontWeight: 600,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                    position: 'absolute', top: 24, left: 24, zIndex: 1001,
+                    background: 'var(--error)', color: 'white',
+                    padding: '10px 20px', borderRadius: '16px',
+                    fontSize: '13px', fontWeight: 700,
+                    boxShadow: 'var(--shadow-lg)',
+                    animation: 'fadeInUp 0.4s ease-out'
                 }}>
-                    ⚠ Location access denied — click map to probe {(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).name}
+                    ⚠ GPS access denied
                 </div>
             )}
 
             {/* Instruction overlay (top-right) */}
             <div style={{
-                position: 'absolute', top: 12, right: 12, zIndex: 1000,
-                background: 'rgba(79,70,229,0.9)', color: 'white',
-                padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 600,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                position: 'absolute', top: 24, right: 24, zIndex: 1000,
+                background: 'var(--glass-bg)', backdropFilter: 'blur(12px)',
+                color: 'var(--text-main)', border: '1px solid var(--glass-border)',
+                padding: '10px 20px', borderRadius: '16px', fontSize: '12px', fontWeight: 700,
+                boxShadow: 'var(--shadow-md)',
+                animation: 'fadeInUp 0.4s ease-out'
             }}>
-                🔍 Drag marker or click map to probe {(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).name}
+                🔍 Drag marker or click map to probe
             </div>
 
             {/* Use My Location button */}
@@ -308,31 +351,41 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
                     if (!navigator.geolocation) return;
                     setGeoStatus('loading');
                     navigator.geolocation.getCurrentPosition(
-                        ({ coords }) => {
+                        async ({ coords }) => {
                             const { latitude: lat, longitude: lng } = coords;
                             setCenter([lat, lng]);
                             setGeoStatus('done');
-                            predictAt({ lat, lng });
+                            const res = await predictAt({ lat, lng });
+                            if (res && onDataUpdate) {
+                                onDataUpdate({
+                                    ...res,
+                                    latitude: lat,
+                                    longitude: lng,
+                                    is_custom: true
+                                });
+                            }
                         },
                         () => setGeoStatus('denied'),
                         { enableHighAccuracy: true, timeout: 8000 }
                     );
                 }}
                 style={{
-                    position: 'absolute', bottom: 20, right: 16, zIndex: 1000,
-                    background: 'linear-gradient(135deg,#4f46e5,#6366f1)',
-                    color: 'white', border: 'none', borderRadius: '10px',
-                    padding: '8px 18px', fontSize: '12px', fontWeight: 700,
-                    cursor: 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.45)',
-                    display: 'flex', alignItems: 'center', gap: 6
+                    position: 'absolute', bottom: 24, right: 24, zIndex: 1000,
+                    background: 'var(--primary)',
+                    color: 'white', border: 'none', borderRadius: '16px',
+                    padding: '12px 24px', fontSize: '13px', fontWeight: 700,
+                    cursor: 'pointer', boxShadow: 'var(--shadow-lg)',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    transition: '0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                 }}
+                className="hover-lift"
             >
                 📍 Use My Location
             </button>
 
             <MapContainer
                 center={center}
-                zoom={8}
+                zoom={mapZoom}
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={true}
             >
@@ -341,6 +394,7 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
                     url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                 />
                 <InitialView center={center} hasInitialized={mapInitialized} />
+                <MapViewportSync center={center} zoom={mapZoom} />
                 <MapClickHandler onMapClick={onMapClick} />
 
                 {/* Active Synced Location Circle (intensity overlay) */}
@@ -437,20 +491,9 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
                                         }}>
                                             🔮 {(POLLUTANT_INFO[pollutantType] || POLLUTANT_INFO.co).modelTag} · {(MODEL_RESOLUTION[pollutantType] || MODEL_RESOLUTION.co).label}
                                         </div>
-                                        {onDataUpdate && (
-                                            <button
-                                                onClick={() => onDataUpdate(dragResult)}
-                                                style={{
-                                                    marginTop: 10, width: '100%', padding: '6px',
-                                                    background: 'linear-gradient(135deg,#4f46e5,#6366f1)',
-                                                    color: 'white', border: 'none',
-                                                    borderRadius: '6px', fontSize: '10px', fontWeight: 700,
-                                                    cursor: 'pointer', boxShadow: '0 2px 8px rgba(79,70,229,0.3)'
-                                                }}
-                                            >
-                                                📊 Sync to Dashboard
-                                            </button>
-                                        )}
+                                        <div style={{ marginTop: 8, fontSize: '10px', color: '#10b981', fontWeight: 700 }}>
+                                            ✓ Auto-synced to Dashboard
+                                        </div>
                                     </>
                                 )}
                             </div>

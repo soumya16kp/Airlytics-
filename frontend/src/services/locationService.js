@@ -60,13 +60,13 @@ const getMapData = async () => {
   return response.data;
 };
 
-const predictCO = async (townId, range = '1Y') => {
-  const response = await api.get(`predict-co/?town=${townId}&range=${range}`);
+const predictCO = async (townId, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-co/`, { params: { town: townId, range, ...overrides } });
   return response.data;
 };
 
-const predictCOAt = async (lat, lon, range = '1Y') => {
-  const response = await api.get(`predict-co-at/?lat=${lat}&lon=${lon}&range=${range}`);
+const predictCOAt = async (lat, lon, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-co-at/`, { params: { lat, lon, range, ...overrides } });
   return response.data;
 };
 
@@ -77,13 +77,13 @@ const getMapDataNO2 = async () => {
   return response.data;
 };
 
-const predictNO2 = async (townId, range = '1Y') => {
-  const response = await api.get(`predict-no2/?town=${townId}&range=${range}`);
+const predictNO2 = async (townId, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-no2/`, { params: { town: townId, range, ...overrides } });
   return response.data;
 };
 
-const predictNO2At = async (lat, lon, range = '1Y') => {
-  const response = await api.get(`predict-no2-at/?lat=${lat}&lon=${lon}&range=${range}`);
+const predictNO2At = async (lat, lon, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-no2-at/`, { params: { lat, lon, range, ...overrides } });
   return response.data;
 };
 
@@ -94,13 +94,13 @@ const getMapDataO3 = async () => {
   return response.data;
 };
 
-const predictO3 = async (townId, range = '1Y') => {
-  const response = await api.get(`predict-o3/?town=${townId}&range=${range}`);
+const predictO3 = async (townId, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-o3/`, { params: { town: townId, range, ...overrides } });
   return response.data;
 };
 
-const predictO3At = async (lat, lon, range = '1Y') => {
-  const response = await api.get(`predict-o3-at/?lat=${lat}&lon=${lon}&range=${range}`);
+const predictO3At = async (lat, lon, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-o3-at/`, { params: { lat, lon, range, ...overrides } });
   return response.data;
 };
 
@@ -111,13 +111,20 @@ const getMapDataSO2 = async () => {
   return response.data;
 };
 
-const predictSO2 = async (townId, range = '1Y') => {
-  const response = await api.get(`predict-so2/?town=${townId}&range=${range}`);
+const predictSO2 = async (townId, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-so2/`, { params: { town: townId, range, ...overrides } });
   return response.data;
 };
 
-const predictSO2At = async (lat, lon, range = '1Y') => {
-  const response = await api.get(`predict-so2-at/?lat=${lat}&lon=${lon}&range=${range}`);
+const predictSO2At = async (lat, lon, range = '1Y', overrides = {}) => {
+  const response = await api.get(`predict-so2-at/`, { params: { lat, lon, range, ...overrides } });
+  return response.data;
+};
+
+const getPollutionInsight = async (pollutant, value, unit, status) => {
+  const response = await api.get('pollution-insight/', { 
+    params: { pollutant, value, unit, status } 
+  });
   return response.data;
 };
 
@@ -143,6 +150,8 @@ const locationService = {
   getMapDataSO2,
   predictSO2,
   predictSO2At,
+  // AI
+  getPollutionInsight,
 };
 
 export default locationService;

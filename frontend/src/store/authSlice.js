@@ -44,6 +44,22 @@ export const logout = createAsyncThunk('auth/logout', async () => {
   authService.logout();
 });
 
+export const loadUser = createAsyncThunk(
+  'auth/loadUser',
+  async (_, thunkAPI) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) return thunkAPI.rejectWithValue('No token');
+      
+      const user = await authService.getUser();
+      const profile = await locationService.getProfile();
+      return { user, profile };
+    } catch (error) {
+      return thunkAPI.rejectWithValue('Session expired');
+    }
+  }
+);
+
 export const updateProfile = createAsyncThunk(
   'auth/profile',
   async (profileData, thunkAPI) => {
@@ -59,7 +75,7 @@ export const updateProfile = createAsyncThunk(
 const initialState = {
   user: null,
   profile: null,
-  isLoggedIn: false,
+  isLoggedIn: !!localStorage.getItem('access_token'),
   isError: false,
   isSuccess: false,
   isLoading: false,
@@ -112,6 +128,21 @@ const authSlice = createSlice({
         state.user = null;
         state.isLoggedIn = false;
         state.profile = null;
+      })
+      .addCase(loadUser.fulfilled, (state, action) => {
+        state.user = action.payload.user;
+        state.profile = action.payload.profile;
+        state.isLoggedIn = true;
+        state.isLoading = false;
+      })
+      .addCase(loadUser.rejected, (state) => {
+        state.user = null;
+        state.profile = null;
+        state.isLoggedIn = false;
+        state.isLoading = false;
+      })
+      .addCase(loadUser.pending, (state) => {
+        state.isLoading = true;
       })
       .addCase(updateProfile.fulfilled, (state, action) => {
         state.profile = action.payload;

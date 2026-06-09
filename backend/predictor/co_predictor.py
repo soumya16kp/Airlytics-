@@ -22,8 +22,8 @@ import joblib
 from weather_service import get_climate_for_month, get_live_weather
 from timeline_utils import generate_timeline_points
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'core', 'rf_regularized.pkl')
-TIF_PATH   = os.path.join(os.path.dirname(__file__), 'core', 'predictors_2026.tif')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'rf_regularized.pkl')
+TIF_PATH   = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'predictors_2026.tif')
 
 # Band indices in the TIF
 B_URBAN = 0; B_NIGHT = 1; B_TEMP = 2; B_DEWPOINT = 3
@@ -119,25 +119,25 @@ class COPredictor:
 
     # ── Public API ───────────────────────────────────────────────────────────
 
-    def predict_for_town(self, town, range_str='1Y'):
+    def predict_for_town(self, town, range_str='1Y', overrides=None):
         self._load()
         if self._error:
             return {'error': self._error}
         if town.latitude is None or town.longitude is None:
             return {'error': f"Town '{town.name}' has no coordinates."}
-        return self._predict_timeline(town.latitude, town.longitude, range_str)
+        return self._predict_timeline(town.latitude, town.longitude, range_str, overrides=overrides)
 
-    def predict_at_coords(self, lat, lon, range_str='1Y'):
+    def predict_at_coords(self, lat, lon, range_str='1Y', overrides=None):
         self._load()
         if self._error:
             return {'error': self._error}
-        result = self._predict_timeline(lat, lon, range_str)
+        result = self._predict_timeline(lat, lon, range_str, overrides=overrides)
         result['lat'] = lat
         result['lon'] = lon
         result['is_custom'] = True
         return result
 
-    def _predict_timeline(self, lat, lon, range_str):
+    def _predict_timeline(self, lat, lon, range_str, overrides=None):
         """
         Generate timeline of real RF model predictions.
         For CO, daily granularity within a month gives the same value
@@ -146,6 +146,11 @@ class COPredictor:
         base_pixel, err = self._get_pixel(lat, lon)
         if err:
             return {'error': err}
+
+        # Apply spatial overrides if any
+        if overrides:
+            if 'urban' in overrides: base_pixel[B_URBAN] = float(overrides['urban'])
+            if 'night' in overrides: base_pixel[B_NIGHT] = float(overrides['night'])
 
         points = generate_timeline_points(range_str)
 
@@ -157,6 +162,13 @@ class COPredictor:
             month = pt['month']
             if month not in month_values:
                 perturbed = self._perturb_for_month(base_pixel, month)
+                
+                # Apply simple weather overrides on top of perturbed features
+                if overrides:
+                    if 'temp' in overrides: perturbed[B_TEMP] = float(overrides['temp'])
+                    if 'wind_speed' in overrides: perturbed[B_WIND] = float(overrides['wind_speed'])
+                    # ... etc.
+
                 co_val = float(self._model.predict(perturbed.reshape(1, -1))[0])
                 month_values[month] = co_val
 

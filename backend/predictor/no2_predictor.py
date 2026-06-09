@@ -17,13 +17,14 @@ import rasterio
 import xgboost as xgb
 
 from weather_service import get_weather_for_day, get_elevation
-from timeline_utils import generate_timeline_points
+from timeline_utils import generate_timeline_points, day_sin, day_cos
+from grid_data_service import grid_data_service
 
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'no2_xgboost_model.json')
-TIF_PATH   = os.path.join(os.path.dirname(__file__), 'NO2_2026_FullYear_12Bands.tif')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'no2_xgboost_model.json')
+TIF_PATH   = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'NO2_2026_FullYear_12Bands.tif')
 
 # Defaults for features not available from weather
-DEFAULT_POP = 500000
+DEFAULT_POP = 5000
 DEFAULT_URB = 50.0
 DEFAULT_NTL = 30.0
 DEFAULT_AAI = 1.0
@@ -75,16 +76,20 @@ class NO2Predictor:
 
         return pixel_vals.tolist(), None
 
-    def _predict_for_day(self, lat, lon, doy, month, elev=None, weather=None):
+    def _predict_for_day(self, lat, lon, doy, month, elev=100.0, weather=None, pop=5000.0, overrides=None):
         """Run XGBoost for a specific day-of-year."""
-        _elev = elev if elev is not None else 100.0
+        _elev = elev
         _cld  = weather.get('cld', 20.0) if weather else 20.0
-        _dow  = (doy % 7)   # day of week approximation
+        _pop  = pop
+        _urb  = float(overrides.get('urban', DEFAULT_URB)) if overrides else DEFAULT_URB
+        _ntl  = float(overrides.get('night', DEFAULT_NTL)) if overrides else DEFAULT_NTL
+        _aai  = float(overrides.get('aai', DEFAULT_AAI)) if overrides else DEFAULT_AAI
+        _dow  = (doy % 7)
 
         features = np.array([[
-            lat, lon, _elev, DEFAULT_POP, DEFAULT_URB, DEFAULT_NTL,
-            _dow, doy, month, _cld, DEFAULT_AAI,
-            DEFAULT_POP * DEFAULT_NTL,   # pop_ntl interaction
+            lat, lon, _elev, _pop, _urb, _ntl,
+            _dow, doy, month, _cld, _aai,
+            _pop * _ntl,   # pop_ntl interaction
             DEFAULT_LOC_ID
         ]], dtype=np.float64)
 
@@ -97,32 +102,39 @@ class NO2Predictor:
 
     # ── Public API ───────────────────────────────────────────────────────────
 
-    def predict_for_town(self, town, range_str='1Y'):
+    def predict_for_town(self, town, range_str='1Y', overrides=None):
         self._load()
         if self._error:
             return {'error': self._error}
         if town.latitude is None or town.longitude is None:
             return {'error': f"Town '{town.name}' has no coordinates."}
-        return self._predict_timeline(town.latitude, town.longitude, range_str)
+        return self._predict_timeline(town.latitude, town.longitude, range_str, overrides=overrides)
 
-    def predict_at_coords(self, lat, lon, range_str='1Y'):
+    def predict_at_coords(self, lat, lon, range_str='1Y', overrides=None):
         self._load()
         if self._error:
             return {'error': self._error}
-        result = self._predict_timeline(lat, lon, range_str)
+        result = self._predict_timeline(lat, lon, range_str, overrides=overrides)
         result['lat'] = lat
         result['lon'] = lon
         result['is_custom'] = True
         return result
 
-    def _predict_timeline(self, lat, lon, range_str):
+    def _predict_timeline(self, lat, lon, range_str, overrides=None):
         """
         Generate timeline of real predictions.
         - For monthly (1Y, 6M, 3M): use TIF bands directly (blazing fast)
         - For daily (1D, 1W, 1M): run XGBoost per day
         """
         points = generate_timeline_points(range_str)
-        elev = get_elevation(lat, lon)
+        
+        # Get baseline from spatial grid
+        grid_pop, grid_elev = grid_data_service.get_data_at(lat, lon)
+        
+        elev = grid_elev
+        if overrides and 'elev' in overrides: elev = float(overrides['elev'])
+        
+        pop = float(overrides.get('pop', grid_pop)) if overrides else grid_pop
 
         # Try to get TIF monthly data for fast monthly lookups
         tif_monthly, _ = self._get_tif_monthly(lat, lon)
@@ -134,13 +146,20 @@ class NO2Predictor:
             doy   = pt['day_of_year']
             month = pt['month']
 
-            if range_str in ('1Y', '6M', '3M') and tif_monthly is not None:
+            if range_str in ('1Y', '6M', '3M') and tif_monthly is not None and not overrides:
                 # Use TIF band directly (index 0-11 for months 1-12)
                 value = tif_monthly[month - 1]
             else:
                 # Run XGBoost for this specific day
-                weather = get_weather_for_day(lat, lon, doy)
-                value = self._predict_for_day(lat, lon, doy, month, elev, weather)
+                hour = pt.get('hour')
+                weather = get_weather_for_day(lat, lon, doy, hour=hour)
+                
+                # Apply weather overrides
+                if overrides:
+                    for k in ['temp', 'cld', 'wind_speed', 'wind_dir']:
+                        if k in overrides: weather[k] = float(overrides[k])
+                
+                value = self._predict_for_day(lat, lon, doy, month, elev, weather, pop=pop, overrides=overrides)
 
             timeline.append({
                 'year':          pt['year'],

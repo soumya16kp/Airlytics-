@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { logout, reset } from '../store/authSlice';
@@ -6,7 +6,8 @@ import locationService from '../services/locationService';
 import LocationSelector from './LocationSelector';
 import {
   LogOut, User, MapPin,
-  TrendingUp, BarChart3, Activity, Wind
+  TrendingUp, BarChart3, Activity, Wind,
+  ArrowUp, ArrowDown, RefreshCw
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -16,10 +17,10 @@ import RegionalMap from './RegionalMap';
 
 // Pollutant display config
 const POLLUTANT_LABELS = {
-  co:  { name: 'CO',  full: 'Carbon Monoxide',   unit: 'mol/m²',  whoLimit: 0.035 },
-  no2: { name: 'NO₂', full: 'Nitrogen Dioxide',   unit: 'µmol/m²', whoLimit: 40 },
-  so2: { name: 'SO₂', full: 'Sulfur Dioxide',     unit: 'DU',      whoLimit: 40 },
-  o3:  { name: 'O₃',  full: 'Ozone',              unit: 'DU',      whoLimit: 100 },
+  co:  { name: 'CO',  full: 'Carbon Monoxide',   unit: 'mg/m³',   whoLimit: 4,    molarMass: 28.01 },
+  no2: { name: 'NO₂', full: 'Nitrogen Dioxide',   unit: 'µg/m³',   whoLimit: 40,   molarMass: 46.01 },
+  so2: { name: 'SO₂', full: 'Sulfur Dioxide',     unit: 'µg/m³',   whoLimit: 40,   molarMass: 64.07 },
+  o3:  { name: 'O₃',  full: 'Ozone',              unit: 'µg/m³',   whoLimit: 100,  molarMass: 48.00 },
 };
 
 const FUTURE_RANGES = ['1D', '1W', '1M', '3M', '6M', '1Y'];
@@ -40,6 +41,80 @@ const predictAtByType = {
   so2: locationService.predictSO2At,
 };
 
+const PARAMETER_CONFIG = {
+  co: [
+    { key: 'urban', label: 'Urban Fraction', min: 0, max: 100, step: 1, unit: '%', default: 50 },
+    { key: 'night', label: 'Nightlight Intensity', min: 0, max: 63, step: 1, unit: 'DN', default: 30 },
+    { key: 'temp', label: 'Temperature', min: 10, max: 50, step: 0.5, unit: '°C', default: 27 },
+    { key: 'wind_speed', label: 'Wind Speed', min: 0, max: 20, step: 0.2, unit: 'm/s', default: 3 },
+    { key: 'pressure', label: 'Surface Pressure', min: 950, max: 1050, step: 1, unit: 'hPa', default: 1010 },
+  ],
+  no2: [
+    { key: 'pop', label: 'Population', min: 1000, max: 1000000, step: 1000, unit: '', default: 5000 },
+    { key: 'temp', label: 'Temperature', min: 10, max: 50, step: 0.5, unit: '°C', default: 27 },
+    { key: 'wind_speed', label: 'Wind Speed', min: 0, max: 20, step: 0.2, unit: 'm/s', default: 3 },
+    { key: 'cld', label: 'Cloud Cover', min: 0, max: 100, step: 1, unit: '%', default: 20 },
+    { key: 'urban', label: 'Urbanization', min: 0, max: 100, step: 1, unit: '%', default: 40 },
+  ],
+  so2: [
+    { key: 'pop', label: 'Population Density', min: 1000, max: 1000000, step: 1000, unit: '', default: 5000 },
+    { key: 'temp', label: 'Temperature', min: 10, max: 50, step: 0.5, unit: '°C', default: 27 },
+    { key: 'wind_speed', label: 'Wind Speed', min: 0, max: 20, step: 0.2, unit: 'm/s', default: 3 },
+    { key: 'cld', label: 'Cloud Cover', min: 0, max: 100, step: 1, unit: '%', default: 20 },
+    { key: 'pbl', label: 'PBL Height', min: 100, max: 3000, step: 50, unit: 'm', default: 800 },
+  ],
+  o3: [
+    { key: 'temp', label: 'Temperature', min: 10, max: 50, step: 0.5, unit: '°C', default: 27 },
+    { key: 'solar', label: 'Solar Radiation', min: 0, max: 1200, step: 10, unit: 'W/m²', default: 600 },
+    { key: 'wind_speed', label: 'Wind Speed', min: 0, max: 20, step: 0.2, unit: 'm/s', default: 3 },
+    { key: 'pbl', label: 'PBL Height', min: 100, max: 3000, step: 50, unit: 'm', default: 800 },
+    { key: 'pop', label: 'Population', min: 1000, max: 1000000, step: 1000, unit: '', default: 5000 },
+  ]
+};
+
+const POLLUTANT_DETAILS = {
+  co: {
+    description: "Carbon Monoxide (CO) is a colorless, odorless gas. It is a product of incomplete combustion of fossil fuels, mainly from vehicle emissions and industrial activities.",
+    health_advice: {
+      'Excellent': { health: "Air quality is ideal. No risk of CO exposure.", action: "Perfect for all outdoor and indoor activities." },
+      'Good': { health: "CO levels are within safe limits. No noticeable health effects.", action: "Normal activities. Ensure proper ventilation in rooms with heaters." },
+      'Moderate': { health: "Sensitive individuals may experience slight fatigue or reduced exercise tolerance.", action: "Avoid prolonged exposure near heavy traffic or industrial areas." },
+      'Poor': { health: "Increased risk of headaches, dizziness, and reduced oxygen delivery to the heart.", action: "Limit outdoor time. Move to areas with better ventilation immediately." },
+      'Hazardous': { health: "Dangerous CO levels. Can cause severe headaches, confusion, and cardiovascular distress.", action: "EVACUATE area. Seek fresh air and medical attention immediately." }
+    }
+  },
+  no2: {
+    description: "Nitrogen Dioxide (NO₂) is a reddish-brown gas. It primarily comes from burning fuel in vehicles and power plants, contributing to smog and acid rain.",
+    health_advice: {
+      'Excellent': { health: "Air is very clean. No respiratory risks.", action: "Ideal for outdoor sports and high-intensity activities." },
+      'Good': { health: "Safe levels for the general population. Minimal risk.", action: "Normal outdoor activities are recommended." },
+      'Moderate': { health: "May cause increased bronchial reactivity in asthmatics.", action: "Asthmatics should monitor symptoms and limit heavy outdoor work." },
+      'Poor': { health: "Increased risk of respiratory infection and aggravation of lung disease.", action: "Children and elderly should stay indoors. Avoid high-traffic zones." },
+      'Hazardous': { health: "Severe respiratory irritation. Significant risk of asthma attacks.", action: "Everyone should avoid outdoor physical activity. Keep windows closed." }
+    }
+  },
+  so2: {
+    description: "Sulfur Dioxide (SO₂) is a pungent, colorless gas produced by volcanic eruptions and industrial processes like coal burning and metal smelting.",
+    health_advice: {
+      'Excellent': { health: "No sulfurous pollutants detected. Very safe air.", action: "Safe for all outdoor recreational activities." },
+      'Good': { health: "SO₂ levels are low and safe for most individuals.", action: "Normal activities. Industrial workers should follow safety protocols." },
+      'Moderate': { health: "May cause minor eye or throat irritation for some people.", action: "Reduce time spent near power plants or heavy industrial sites." },
+      'Poor': { health: "Wheezing, chest tightness, and shortness of breath likely for asthmatics.", action: "Avoid outdoor activities. Use air filtration if near industrial zones." },
+      'Hazardous': { health: "Severe respiratory distress. High risk of permanent lung damage.", action: "STAY INDOORS. Use N95 masks if you must go outside near factories." }
+    }
+  },
+  o3: {
+    description: "Ground-level Ozone (O₃) is a secondary pollutant formed when sunlight reacts with other pollutants. It is a major component of urban smog.",
+    health_advice: {
+      'Excellent': { health: "Ozone levels are at a natural baseline. No risk.", action: "Perfect for hiking and outdoor activities." },
+      'Good': { health: "Very low ozone concentration. Air is fresh.", action: "Normal outdoor activities are safe." },
+      'Moderate': { health: "Coughing and throat irritation may occur during heavy exercise.", action: "Limit afternoon outdoor activities when sunlight is strongest." },
+      'Poor': { health: "Reduced lung function. Chest pain and inflammation of the airways.", action: "Stay indoors between 12 PM and 5 PM. Use air conditioning." },
+      'Hazardous': { health: "Severe lung damage. Ozone levels are dangerously high.", action: "Avoid all outdoor exertion. Keep vulnerable people in filtered air." }
+    }
+  }
+};
+
 const Dashboard = ({ pollutantType = 'co' }) => {
   const pollutant = POLLUTANT_LABELS[pollutantType] || POLLUTANT_LABELS.co;
   const navigate = useNavigate();
@@ -49,123 +124,237 @@ const Dashboard = ({ pollutantType = 'co' }) => {
   const [predData, setPredData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [aiInsight, setAiInsight] = useState(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [hasAutoLocated, setHasAutoLocated] = useState(false);
   const [showLocationSelector, setShowLocationSelector] = useState(false);
   const [syncedAt, setSyncedAt] = useState(null);
   const [syncedAgo, setSyncedAgo] = useState(null);
+  const [selectedCoords, setSelectedCoords] = useState(null);
 
-  // Time selector
-  const [timeRange, setTimeRange] = useState('1Y');
-
+  const [timeRange, setTimeRange] = useState('1D');
+  const [simData, setSimData] = useState(null); 
+  const [overrides, setOverrides] = useState({});
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simLoading, setSimLoading] = useState(false);
+  const [simError, setSimError] = useState(null);
+  
   const WHO_SAFE_LIMIT = pollutant.whoLimit;
 
-  // ── Scaling for NO2 (mol/m² → µmol/m² visual range) ──────────────────────
-  const processPollutantData = (data) => {
-    if (pollutantType === 'no2') {
-      const MULTIPLIER = 1000000;
-      let processed = { ...data };
-      if (processed.base_value_2026 !== undefined)
-        processed.base_value_2026 = processed.base_value_2026 * MULTIPLIER;
-      if (processed.timeline) {
-        processed.timeline = processed.timeline.map(t => ({
-          ...t, value: t.value * MULTIPLIER
-        }));
-      }
-      return processed;
+  const getStatus = useCallback((val, limit = WHO_SAFE_LIMIT) => {
+    if (!val || !limit) return null;
+    const ratio = val / limit;
+    if (ratio <= 0.5) return { label: 'Excellent', color: '#059669', emoji: '🟢' };
+    if (ratio <= 1.0) return { label: 'Good',      color: '#10b981', emoji: '🟢' };
+    if (ratio <= 1.5) return { label: 'Moderate',   color: '#f59e0b', emoji: '🟡' };
+    if (ratio <= 2.0) return { label: 'Poor',       color: '#f97316', emoji: '🟠' };
+    return              { label: 'Hazardous', color: '#ef4444', emoji: '🔴' };
+  }, [WHO_SAFE_LIMIT]);
+
+  // ── Scientific Conversion Layer ──
+  const processPollutantData = useCallback((data) => {
+    if (!data) return data;
+    
+    const rawValue = data.base_value_2026;
+    const needsConversion = ['co', 'no2', 'so2', 'o3'].includes(pollutantType);
+    
+    if (!needsConversion) return data;
+
+    const pbl = data.weather_snapshot?.pbl || 1000; 
+    const molarMass = pollutant.molarMass;
+    
+    let MULTIPLIER = (molarMass * 1000000) / pbl;
+    if (pollutantType === 'co') MULTIPLIER = (molarMass * 1000) / pbl;
+    if (pollutantType === 'so2') MULTIPLIER = molarMass / pbl;
+    if (pollutantType === 'o3') MULTIPLIER = (molarMass * 0.1) / pbl; // Ozone specific scaling for surface concentration
+
+    let processed = { ...data };
+    processed.base_value_2026 = processed.base_value_2026 * MULTIPLIER;
+    if (processed.timeline) {
+      processed.timeline = processed.timeline.map(t => {
+        const pointPbl = t.pbl || pbl;
+        let m;
+        if (pollutantType === 'co')  m = (molarMass * 1000) / pointPbl;
+        else if (pollutantType === 'so2') m = molarMass / pointPbl;
+        else if (pollutantType === 'o3')  m = (molarMass * 0.1) / pointPbl;
+        else m = (molarMass * 1000000) / pointPbl; // no2
+        return { ...t, value: t.value * m };
+      });
     }
-    return data;
-  };
+    return processed;
+  }, [pollutantType, pollutant.molarMass]);
+
+  // ── AI Insight Fetcher ──
+  const fetchAiInsight = useCallback(async (name, val, unit, label) => {
+    // Don't call Gemini if we don't have a valid status label
+    if (!label || !val || val <= 0) {
+      setIsAiLoading(false);
+      return;
+    }
+    setIsAiLoading(true);
+    try {
+      const res = await locationService.getPollutionInsight(name, val, unit, label);
+      setAiInsight(res.insight);
+    } catch (e) {
+      console.warn("Gemini fetch failed:", e);
+      setAiInsight(null);
+    } finally {
+      setIsAiLoading(false);
+    }
+  }, []);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
-  const fetchPrediction = async (range = '1Y') => {
+  // ── Data fetching ─────────────────────────────────────────────────────────
+
+  const fetchPrediction = useCallback(async (range = '1Y') => {
     if (!profile?.preferred_town) return;
     setLoading(true);
     setError(null);
     try {
       const predictFn = predictByType[pollutantType] || predictByType.co;
-      let data = await predictFn(profile.preferred_town, range);
+      let data = await predictFn(profile.preferred_town, range, {});
       setSyncedAt(Date.now());
-      setPredData(processPollutantData(data));
+      const processed = processPollutantData(data);
+      setSelectedCoords(null);
+      setPredData(processed);
+      
+      const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
+      fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
     } catch (e) {
       setError(e.response?.data?.error || `Failed to load ${pollutant.name} data`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [profile?.preferred_town, pollutantType, pollutant.name, pollutant.whoLimit, pollutant.unit, processPollutantData, fetchAiInsight, getStatus]);
 
-  const fetchAtCoords = async (lat, lon, range = '1Y') => {
+  const fetchAtCoords = useCallback(async (lat, lon, range = '1Y') => {
     setLoading(true);
     setError(null);
     try {
       const predictAtFn = predictAtByType[pollutantType] || predictAtByType.co;
-      let data = await predictAtFn(lat, lon, range);
+      let data = await predictAtFn(lat, lon, range, {});
       setSyncedAt(Date.now());
-      setPredData(processPollutantData(data));
+      const processed = processPollutantData(data);
+      setSelectedCoords({ lat, lon });
+      setPredData(processed);
+
+      const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
+      fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
     } catch (e) {
       setError(e.response?.data?.error || `Prediction failed for ${pollutant.name}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [pollutantType, pollutant.name, pollutant.whoLimit, pollutant.unit, processPollutantData, fetchAiInsight, getStatus]);
 
-  // ── Auto-location on mount ────────────────────────────────────────────────
+  // ── Auto-location & Initial Data Fetch ────────────────────────────────────
 
   useEffect(() => {
     if (!isLoggedIn) { navigate('/login'); return; }
+    if (hasAutoLocated) return;
 
-    if (!hasAutoLocated) {
-      if (navigator.geolocation) {
-        setLoading(true);
-        navigator.geolocation.getCurrentPosition(
-          async ({ coords }) => {
-            try {
-              await fetchAtCoords(coords.latitude, coords.longitude, timeRange);
-              setHasAutoLocated(true);
-              setShowLocationSelector(false);
-            } catch {
-              fallbackToPreferred();
-            }
-          },
-          () => fallbackToPreferred(),
-          { timeout: 5000 }
-        );
+    const fallbackToPreferred = () => {
+      setHasAutoLocated(true);
+      setShowLocationSelector(false); // Close selector if we have a preferred town
+      if (!profile?.preferred_town) {
+        setShowLocationSelector(true);
+        setLoading(false);
       } else {
-        fallbackToPreferred();
+        fetchPrediction(timeRange);
       }
+    };
+
+    if (navigator.geolocation) {
+      setLoading(true);
+      navigator.geolocation.getCurrentPosition(
+        async ({ coords }) => {
+          try {
+            await fetchAtCoords(coords.latitude, coords.longitude, timeRange);
+            setHasAutoLocated(true);
+            setShowLocationSelector(false);
+          } catch {
+            fallbackToPreferred();
+          }
+        },
+        () => fallbackToPreferred(),
+        { timeout: 5000 }
+      );
+    } else {
+      fallbackToPreferred();
+    }
+  }, [isLoggedIn, navigate, hasAutoLocated, fetchAtCoords, fetchPrediction, timeRange, profile?.preferred_town]);
+
+  // ── Parameter Synchronisation Effect ──────────────────────────────────────
+  // Triggers when pollutant type or time range changes, for the CURRENT location
+  useEffect(() => {
+    if (!hasAutoLocated) return;
+
+    if (selectedCoords?.lat != null && selectedCoords?.lon != null) {
+      fetchAtCoords(selectedCoords.lat, selectedCoords.lon, timeRange);
     } else if (profile?.preferred_town) {
       fetchPrediction(timeRange);
     }
-  }, [isLoggedIn, navigate, profile?.preferred_town]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pollutantType, timeRange, profile?.preferred_town]); 
 
-  const fallbackToPreferred = () => {
-    setHasAutoLocated(true);
-    if (!profile?.preferred_town) {
-      setShowLocationSelector(true);
-      setLoading(false);
-    } else {
-      setShowLocationSelector(false);
-      fetchPrediction(timeRange);
+
+  // Separate effect for simulation — only triggers on WEATHER overrides, not time_focus
+  useEffect(() => {
+    const { time_focus, ...weatherOverrides } = overrides;
+    
+    if (Object.keys(weatherOverrides).length === 0) {
+      setSimData(null);
+      setIsSimulating(false);
+      setSimError(null);
+      return;
     }
+
+    const fetchSimulation = async () => {
+      setSimLoading(true);
+      setSimError(null);
+      try {
+        const predictFn = predictByType[pollutantType];
+        const predictAtFn = predictAtByType[pollutantType];
+        
+        let data;
+        if (predData?.is_custom) {
+          data = await predictAtFn(predData.latitude, predData.longitude, timeRange, weatherOverrides);
+        } else {
+          data = await predictFn(profile.preferred_town, timeRange, weatherOverrides);
+        }
+        if (data?.error) {
+          setSimError(data.error);
+        } else {
+          const processed = processPollutantData(data);
+          setSimData(processed);
+
+          const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
+          fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
+        }
+      } catch (e) {
+        console.error("Simulation failed", e);
+        setSimError('Simulation failed. Please try again.');
+      } finally {
+        setSimLoading(false);
+      }
+    };
+
+    const timer = setTimeout(fetchSimulation, 600);
+    return () => clearTimeout(timer);
+  }, [overrides, pollutantType, predData, profile?.preferred_town, timeRange, processPollutantData, getStatus, fetchAiInsight, pollutant.name, pollutant.whoLimit, pollutant.unit]);
+
+  const handleOverrideChange = (key, value) => {
+    const numericValue = parseFloat(value);
+    setOverrides(prev => ({ ...prev, [key]: numericValue }));
+    setIsSimulating(true);
   };
 
-  // Refetch when pollutant tab changes
-  useEffect(() => {
-    if (hasAutoLocated && profile?.preferred_town) {
-      fetchPrediction(timeRange);
-    }
-  }, [pollutantType]);
-
-  // Refetch when time range changes
-  useEffect(() => {
-    if (hasAutoLocated && predData) {
-      if (predData?.is_custom && predData?.latitude && predData?.longitude) {
-        fetchAtCoords(predData.latitude, predData.longitude, timeRange);
-      } else if (profile?.preferred_town) {
-        fetchPrediction(timeRange);
-      }
-    }
-  }, [timeRange]);
+  const resetOverrides = () => {
+    setOverrides({});
+    setSimData(null);
+    setIsSimulating(false);
+  };
 
   // ── Freshness counter ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -179,11 +368,44 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     return () => clearInterval(timer);
   }, [syncedAt]);
 
-  // Map sync handler (preserves already-scaled data)
-  const handleMapSync = (data) => {
-    setPredData(data);
-    setSyncedAt(Date.now());
-  };
+  // Map sync handler
+  const handleMapSync = useCallback((data) => {
+    if (data.error) {
+      setError(data.error);
+      setLoading(false);
+      return;
+    }
+
+    const lat = data?.latitude ?? data?.lat;
+    const lon = data?.longitude ?? data?.lon;
+
+    if (lat == null || lon == null) return;
+
+    if (data.loading) {
+      setLoading(true);
+      setSelectedCoords({ lat, lon });
+      return;
+    }
+
+    if (data.error) {
+      setError(data.error);
+      setLoading(false);
+      return;
+    }
+
+    if (data.timeline) {
+      const processed = processPollutantData(data);
+      setSelectedCoords({ lat, lon });
+      setPredData(processed);
+      setSyncedAt(Date.now());
+
+      const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
+      fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
+      setLoading(false);
+    } else {
+      fetchAtCoords(lat, lon, timeRange);
+    }
+  }, [fetchAtCoords, timeRange, processPollutantData, getStatus, pollutant.whoLimit, pollutant.name, pollutant.unit, fetchAiInsight]);
 
   const onLogout = () => {
     dispatch(logout());
@@ -204,7 +426,6 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     }));
   }, [predData]);
 
-  // Bar chart: Predicted vs WHO Safe Limit
   const barData = useMemo(() => {
     return timeline.map(item => ({
       label:     item.label,
@@ -218,34 +439,35 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     return Math.max(...timeline.map(d => d.value), WHO_SAFE_LIMIT) * 1.2;
   }, [timeline, WHO_SAFE_LIMIT]);
 
-  // Current value (last timeline point or average)
   const currentValue = useMemo(() => {
     if (!predData?.base_value_2026) return null;
-    return parseFloat(predData.base_value_2026.toFixed(6));
+    return parseFloat(Number(predData.base_value_2026).toFixed(6));
   }, [predData]);
 
-  // Peak
+  const simulatedValue = useMemo(() => {
+    if (!simData) return null;
+    if (overrides.time_focus && simData.timeline) {
+      const focus = parseInt(overrides.time_focus);
+      const point = simData.timeline.find(t => 
+        (timeRange === '1D' ? t.hour === focus : t.month === focus)
+      );
+      if (point) return parseFloat(Number(point.value).toFixed(6));
+    }
+    if (!simData.base_value_2026) return null;
+    return parseFloat(Number(simData.base_value_2026).toFixed(6));
+  }, [simData, overrides.time_focus, timeRange]);
+
   const peakPoint = useMemo(() => {
     if (!timeline.length) return null;
     return timeline.reduce((prev, curr) => prev.value > curr.value ? prev : curr);
   }, [timeline]);
 
-  // Lowest
   const lowestPoint = useMemo(() => {
     if (!timeline.length) return null;
     return timeline.reduce((prev, curr) => prev.value < curr.value ? prev : curr);
   }, [timeline]);
 
-  // WHO comparison
-  const whoStatus = useMemo(() => {
-    if (!currentValue) return null;
-    const ratio = currentValue / WHO_SAFE_LIMIT;
-    if (ratio <= 0.5) return { label: 'Excellent', color: '#059669', emoji: '🟢' };
-    if (ratio <= 1.0) return { label: 'Good',      color: '#10b981', emoji: '🟢' };
-    if (ratio <= 1.5) return { label: 'Moderate',   color: '#f59e0b', emoji: '🟡' };
-    if (ratio <= 2.0) return { label: 'Poor',       color: '#f97316', emoji: '🟠' };
-    return              { label: 'Hazardous', color: '#ef4444', emoji: '🔴' };
-  }, [currentValue, WHO_SAFE_LIMIT]);
+  const whoStatus = useMemo(() => getStatus(currentValue), [currentValue, getStatus]);
 
   const severityClass = useMemo(() => {
     if (!currentValue || !WHO_SAFE_LIMIT) return '';
@@ -256,12 +478,19 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     return 'severity-hazardous';
   }, [currentValue, WHO_SAFE_LIMIT]);
 
-  // Derived weather data from prediction response
   const weatherData = predData?.weather_snapshot || null;
-
   const hasHistory = pollutantType === 'so2' || pollutantType === 'o3';
-
-  // ── Render ────────────────────────────────────────────────────────────────
+  const isCustomLocation = selectedCoords?.lat != null && selectedCoords?.lon != null;
+  const displayLat = predData?.latitude ?? selectedCoords?.lat;
+  const displayLon = predData?.longitude ?? selectedCoords?.lon;
+  
+  const locationLabel = isCustomLocation
+    ? 'Live Location'
+    : (predData?.town_name || profile?.preferred_town_name || 'Select location');
+    
+  const locationSubLabel = isCustomLocation && displayLat != null && displayLon != null
+    ? `${Number(displayLat).toFixed(4)}°N, ${Number(displayLon).toFixed(4)}°E`
+    : (predData?.district_name || profile?.preferred_district_name || 'Odisha');
 
   if (showLocationSelector) {
     return <LocationSelector onSelect={() => setShowLocationSelector(false)} />;
@@ -275,7 +504,6 @@ const Dashboard = ({ pollutantType = 'co' }) => {
           <span>Odisha CarbonInsight</span>
         </div>
 
-        {/* Pollutant selector */}
         <div className="pollutant-tabs">
           <NavLink to="/dashboard/co" className={({ isActive }) => `pollutant-tab ${isActive ? 'active' : ''}`}>
             <svg className="pollutant-tab-icon" viewBox="0 0 24 24" fill="none"><path d="M4 18c0-2.21 1.79-4 4-4h1c.55 0 1-.45 1-1s.45-1 1-1h1c1.66 0 3 1.34 3 3s-1.34 3-3 3H8c-2.21 0-4-1.79-4-4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M12 15h4c1.66 0 3-1.34 3-3s-1.34-3-3-3h-1c-.55 0-1 .45-1 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -298,7 +526,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
         <div className="navbar-actions">
           <div className="current-loc" onClick={() => setShowLocationSelector(true)}>
             <MapPin size={18} />
-            <span>{profile?.preferred_town_name}, {profile?.preferred_district_name}</span>
+            <span>{locationLabel}, {locationSubLabel}</span>
           </div>
           <div className="navbar-user">
             <User className="user-icon" />
@@ -313,50 +541,73 @@ const Dashboard = ({ pollutantType = 'co' }) => {
       <main className="dashboard-main dashboard-analytics">
         <div className="header-flex">
           <div className="welcome-section">
-            <h1>{predData?.is_custom ? 'Live Location' : (predData?.town_name || profile?.preferred_town_name)} — {pollutant.name} Dashboard</h1>
-            <p>{pollutant.full} · 2026 ML Prediction · Real model output for every data point</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+              <h1>{predData?.is_custom ? 'Live Location' : (predData?.town_name || profile?.preferred_town_name)} — {pollutant.name} Dashboard</h1>
+              {isSimulating && <span className="badge-ai warning">SIMULATION MODE</span>}
+            </div>
+            <p style={{ marginTop: '8px', opacity: 0.8 }}>
+              {pollutant.full} Forecast · 
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}> Triple-Stack ML Ensemble</span> · 
+              Satellite & Weather Derived
+            </p>
             {predData?.latitude && (
               <div className="coord-badge">
-                {predData.latitude.toFixed(4)}°N, {predData.longitude.toFixed(4)}°E
+                {Number(predData.latitude).toFixed(4)}°N, {Number(predData.longitude).toFixed(4)}°E
               </div>
             )}
             {!loading && !error && predData && (
               <div className="live-badge">
                 <div className="live-dot"></div>
-                <span>Live Weather Synced · Real-Time AI Inference</span>
-                {syncedAgo && <span className="synced-ago">&nbsp;· ⚡ {syncedAgo}</span>}
+                <span className="live-text">Live Synced · AI Inference</span>
+                {syncedAgo && <span className="synced-ago">⚡ {syncedAgo}</span>}
               </div>
             )}
           </div>
-          <div className="quick-stats">
-            <div className="mini-stat">
-              <Activity size={20} className="text-secondary" />
-              <div>
-                <span className="label">Average 2026</span>
-                <span className="value">{currentValue ?? '--'} <small>{pollutant.unit}</small></span>
-              </div>
+          <div className="quick-stats-container">
+            <div className="time-range-selector">
+              {['1D', '1W', '1M'].map(range => (
+                <button 
+                  key={range} 
+                  className={`range-btn ${timeRange === range ? 'active' : ''}`}
+                  onClick={() => setTimeRange(range)}
+                >
+                  {range === '1D' ? 'Today' : range === '1W' ? 'Week' : 'Month'}
+                </button>
+              ))}
             </div>
-            <div className="mini-stat">
-              <TrendingUp size={20} className="text-indigo" />
-              <div>
-                <span className="label">Peak Forecast</span>
-                <span className="value">{peakPoint?.value?.toFixed(4) ?? '--'} <small>({peakPoint?.label})</small></span>
+            <div className="quick-stats">
+              <div className="mini-stat">
+                <Activity size={20} className="text-secondary" />
+                <div>
+                  <span className="label">
+                    {timeRange === '1D' ? 'Daily Mean' : 
+                     timeRange === '1W' ? 'Weekly Mean' : 
+                     timeRange === '1M' ? 'Monthly Mean' : 'Annual Forecast'}
+                  </span>
+                  <span className="value">
+                    {loading ? <div className="dot-typing" style={{ transform: 'scale(0.6)', width: '20px' }}></div> : (currentValue ?? '--')} 
+                    <small>{pollutant.unit}</small>
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="mini-stat">
-              <BarChart3 size={20} className="text-secondary" />
-              <div>
-                <span className="label">Lowest</span>
-                <span className="value">{lowestPoint?.value?.toFixed(4) ?? '--'} <small>({lowestPoint?.label})</small></span>
+              <div className="mini-stat">
+                <TrendingUp size={20} className="text-indigo" />
+                <div>
+                  <span className="label">High Point</span>
+                  <span className="value">
+                    {loading ? <div className="dot-typing" style={{ transform: 'scale(0.6)', width: '20px' }}></div> : (peakPoint?.value?.toFixed(4) ?? '--')} 
+                    <small>({peakPoint?.label ?? '--'})</small>
+                  </span>
+                </div>
               </div>
-            </div>
-            <div className="mini-stat">
-              <Wind size={20} className="text-primary" />
-              <div>
-                <span className="label">WHO Status</span>
-                <span className="value" style={{ color: whoStatus?.color }}>
-                  {whoStatus?.emoji} {whoStatus?.label ?? '--'}
-                </span>
+              <div className="mini-stat">
+                <Wind size={20} className="text-primary" />
+                <div>
+                  <span className="label">Exposure Level</span>
+                  <span className="value" style={{ color: whoStatus?.color }}>
+                    {loading ? <div className="dot-typing" style={{ transform: 'scale(0.6)', width: '20px' }}></div> : (whoStatus?.label ?? '--')}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -367,28 +618,6 @@ const Dashboard = ({ pollutantType = 'co' }) => {
             <div className="chart-card wide map-card skeleton-card">
               <div className="skeleton skeleton-line w-40"></div>
               <div className="skeleton skeleton-map"></div>
-            </div>
-            <div className="chart-card skeleton-card">
-              <div className="skeleton skeleton-line w-60"></div>
-              <div className="skeleton skeleton-stat" style={{ marginBottom: 12 }}></div>
-              <div className="skeleton skeleton-stat"></div>
-              <div className="skeleton skeleton-line w-40" style={{ marginTop: 20 }}></div>
-            </div>
-            <div className="chart-card wide skeleton-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-                <div className="skeleton skeleton-line w-40" style={{ marginBottom: 0 }}></div>
-                <div className="skeleton" style={{ width: 180, height: 32, borderRadius: 12 }}></div>
-              </div>
-              <div className="skeleton skeleton-chart"></div>
-            </div>
-            <div className="chart-card wide skeleton-card">
-              <div className="skeleton skeleton-line w-40"></div>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12, margin: '16px 0' }}>
-                <div className="skeleton skeleton-stat"></div>
-                <div className="skeleton skeleton-stat"></div>
-                <div className="skeleton skeleton-stat"></div>
-              </div>
-              <div className="skeleton skeleton-chart" style={{ height: 280 }}></div>
             </div>
           </div>
         )}
@@ -401,7 +630,6 @@ const Dashboard = ({ pollutantType = 'co' }) => {
 
         {!loading && !error && predData && (
           <>
-            {/* Weather Ingredients — ML Model Inputs */}
             {weatherData && (
               <div className="weather-ingredients">
                 <div className="weather-card">
@@ -443,230 +671,251 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                   <div className="weather-icon">☀️</div>
                   <div className="weather-info">
                     <div className="weather-label">Solar Radiation</div>
-                    <div className="weather-value">{weatherData.solar?.toFixed(0)} W/m²</div>
+                    <div className="weather-value">
+                      {typeof (overrides.solar || weatherData.solar) === 'number' 
+                        ? (overrides.solar || weatherData.solar).toFixed(0) 
+                        : (overrides.solar || weatherData.solar || '--')} W/m²
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            <div className="dashboard-grid">
-
-            {/* Regional Map */}
-            <div className="chart-card wide map-card card-enter">
-              <div className="card-header">
-                <h3>Location Analysis &amp; Regional Heatmap</h3>
-                <span className="badge-location">{profile?.preferred_town_name}, Odisha</span>
+            <div className="chart-card full simulation-card card-enter" style={{ background: '#f8fafc', marginBottom: '48px' }}>
+              <div className="card-header" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '24px', marginBottom: '32px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  <div className="title-with-badge">
+                    <h3 style={{ fontSize: '22px', color: '#0f172a' }}>🧪 What-If Analysis: Interactive Parameters</h3>
+                    <span className="badge-ai primary" style={{ marginLeft: '16px' }}>Live Sensitivity</span>
+                  </div>
+                  {isSimulating && (
+                    <button onClick={resetOverrides} className="btn-reset">
+                      <TrendingUp size={16} /> Reset to Default
+                    </button>
+                  )}
+                </div>
+                <p className="prediction-note" style={{ marginTop: 12, fontSize: '14px', color: 'var(--text-muted)', textAlign: 'left' }}>
+                  Adjust parameters below to see how {pollutant.name} levels react to environmental and demographic changes.
+                </p>
               </div>
-              <RegionalMap
-                townName={profile?.preferred_town_name}
-                currentCOValue={currentValue ?? 0}
-                townCoords={predData?.latitude && predData?.longitude
-                  ? [predData.latitude, predData.longitude]
-                  : null
-                }
-                onDataUpdate={handleMapSync}
-                pollutantType={pollutantType}
-              />
+              
+              <div className="simulation-grid" style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
+                gap: '24px', 
+                padding: '0' 
+              }}>
+                {(PARAMETER_CONFIG[pollutantType] || []).map(param => (
+                  <div className="sim-control" key={param.key}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                      <label style={{ fontSize: '13px', fontWeight: 700, color: '#475569' }}>
+                        {param.label}
+                      </label>
+                      <div className="sim-value-box">
+                        {overrides[param.key] || (weatherData?.[param.key]?.toFixed?.(1) || weatherData?.[param.key] || param.default)}{param.unit}
+                      </div>
+                    </div>
+                    <input 
+                      type="range" min={param.min} max={param.max} step={param.step}
+                      value={overrides[param.key] || (weatherData?.[param.key] || param.default)} 
+                      onChange={(e) => handleOverrideChange(param.key, e.target.value)}
+                      style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {isSimulating && (
+                <div style={{ 
+                  marginTop: '40px', 
+                  padding: '40px', 
+                  background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)', 
+                  borderRadius: '32px', 
+                  boxShadow: 'var(--shadow-lg)',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: '24px',
+                  border: '1px solid #e2e8f0',
+                  position: 'relative'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: 800, color: 'var(--primary)', textTransform: 'uppercase', marginBottom: '12px' }}>Scenario Projection</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                      {simLoading ? (
+                        <div className="dot-typing"></div>
+                      ) : (
+                        <>
+                          <span style={{ fontSize: '48px', fontWeight: 800 }}>{simulatedValue ?? '--'}</span>
+                          <span style={{ fontSize: '18px', color: 'var(--text-muted)' }}>{pollutant.unit}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Comparison card */}
-            <div className={`chart-card comparison-analysis card-enter ${severityClass}`}>
-              <div className="card-header">
-                <h3>{pollutant.name} Comparison Analysis</h3>
-                <Wind size={20} className="text-primary" />
-              </div>
-              <div className="comparison-stack">
-                <div className="comparison-item current highlight">
-                  <div className="label-area">
-                    <span className="label">Model Average (2026)</span>
-                    <span className="source-prediction">ML Model Output</span>
-                  </div>
-                  <span className="value">{currentValue ?? '--'} {pollutant.unit}</span>
+            <div className="dashboard-grid">
+              <div className={`chart-card full comparison-analysis card-enter ${severityClass}`} style={{ marginBottom: '32px' }}>
+                <div className="card-header">
+                  <h3>{pollutant.name} Comparison Analysis</h3>
+                  <Wind size={20} className="text-primary" />
                 </div>
-                <div className="comparison-item standard">
-                  <div className="label-area">
-                    <span className="label">WHO Standard</span>
-                    <span className="source">Safe threshold</span>
+                <div className="comparison-stack">
+                  <div className="comparison-item current highlight">
+                    <div className="label-area">
+                      <span className="label">Model Average (2026)</span>
+                    </div>
+                    <span className="value">
+                      {loading ? <div className="dot-typing"></div> : (currentValue ?? '--')} {pollutant.unit}
+                    </span>
                   </div>
-                  <span className="value">{WHO_SAFE_LIMIT} {pollutant.unit}</span>
+                  <div className="comparison-item standard">
+                    <div className="label-area">
+                      <span className="label">WHO Standard</span>
+                    </div>
+                    <span className="value">{WHO_SAFE_LIMIT} {pollutant.unit}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="standard-status-indicator">
-                <div className="status-label">Air Quality:</div>
-                <div className="status-flex">
+                <div className="standard-status-indicator" style={{ marginTop: '16px' }}>
                   <span className="value" style={{ fontWeight: 800, color: whoStatus?.color }}>
-                    {whoStatus?.emoji} {whoStatus?.label ?? 'Calculating...'}
+                    {loading ? 'Analyzing...' : (whoStatus ? `${whoStatus.emoji} ${whoStatus.label}` : 'Calculating...')}
                   </span>
                 </div>
               </div>
-            </div>
 
-            {/* Global Time Controls (Future) */}
-            <div className="chart-card wide card-enter" style={{ padding: '16px 24px', display: 'flex', gap: '24px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <div className="time-selector-group" style={{ display: 'flex', alignItems: 'center' }}>
-                <div style={{fontSize: '11px', fontWeight: 700, color: '#64748b', marginRight: '12px', letterSpacing: '0.05em'}}>FORECAST TIMELINE</div>
-                {FUTURE_RANGES.map(r => (
-                  <button
-                    key={r}
-                    className={`time-pill ${timeRange === r ? 'active' : ''}`}
-                    onClick={() => setTimeRange(r)}
-                  >{r}</button>
-                ))}
+              <div className="chart-card wide map-card card-enter" style={{ gridColumn: 'span 3' }}>
+                <div className="card-header">
+                  <h3>Location Analysis &amp; Regional Heatmap</h3>
+                  <span className="badge-location">{locationLabel}</span>
+                </div>
+                <RegionalMap
+                  townName={profile?.preferred_town_name}
+                  currentCOValue={currentValue ?? 0}
+                  townCoords={predData?.latitude && predData?.longitude ? [predData.latitude, predData.longitude] : null}
+                  onDataUpdate={handleMapSync}
+                  pollutantType={pollutantType}
+                />
               </div>
-            </div>
 
-            {/* VS WHO Standard — Bar Chart */}
-            <div className="chart-card wide card-enter">
-              <div className="card-header">
-                <div className="title-with-badge">
-                  <h3>{pollutant.name} vs WHO Standard</h3>
-                  <span className="badge-ai">Real Model</span>
-                </div>
-              </div>
-              <div className="chart-container">
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={barData} barGap={2} barCategoryGap="20%">
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} interval={barData.length > 20 ? 5 : barData.length > 10 ? 2 : 0} />
-                    <YAxis axisLine={false} tickLine={false} width={60} tickFormatter={v => v >= 1000 ? v.toExponential(1) : v < 0.01 ? v.toExponential(1) : v.toFixed(3)} domain={[0, globalYMax]} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                      formatter={(value, name) => [
-                        (value >= 1000 ? value.toExponential(2) : value < 0.01 ? value.toExponential(2) : value.toFixed(5)) + ' ' + pollutant.unit,
-                        name === 'predicted' ? `🔮 Predicted ${pollutant.name}` : '🟢 WHO Safe Limit'
-                      ]}
-                    />
-                    <Legend verticalAlign="bottom" height={36} formatter={(v) => v === 'predicted' ? `Predicted ${pollutant.name}` : 'WHO Safe Limit'} />
-                    <ReferenceLine y={WHO_SAFE_LIMIT} stroke="#10b981" strokeDasharray="3 3" strokeWidth={1.5} />
-                    <Bar dataKey="predicted" fill="#f43f5e" radius={[4, 4, 0, 0]} name="predicted" />
-                    <Bar dataKey="safeLimit" fill="#10b981" radius={[4, 4, 0, 0]} name="safeLimit" opacity={0.4} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Main Line Chart */}
-            <div className={`chart-card wide co-prediction-card card-enter ${severityClass}`}>
-              <div className="card-header">
-                <div className="title-with-badge">
-                  <h3>{pollutant.name} Prediction — 2026</h3>
-                  <span className="badge-ai">Live ML Model</span>
-                </div>
-                <Activity size={20} className="text-secondary" />
-              </div>
-              <div className="co-stats-grid">
-                <div className="co-main-stat">
-                  <span className="label">Model Average</span>
-                  <span className="value">{currentValue ?? '--'} {pollutant.unit}</span>
-                </div>
-                <div className="co-mini-stat">
-                  <span className="label">Peak ({peakPoint?.label})</span>
-                  <span className="value-mini">{peakPoint?.value?.toFixed(5) ?? '--'}</span>
-                </div>
-                <div className="co-mini-stat">
-                  <span className="label">Low ({lowestPoint?.label})</span>
-                  <span className="value-mini">{lowestPoint?.value?.toFixed(5) ?? '--'}</span>
+              <div className="chart-card wide card-enter" style={{ gridColumn: 'span 3' }}>
+                <div className="card-container">
+                  <ResponsiveContainer width="100%" height={400}>
+                    <BarChart data={barData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="label" />
+                      <YAxis domain={[0, globalYMax]} />
+                      <Tooltip />
+                      <Legend />
+                      <ReferenceLine y={WHO_SAFE_LIMIT} stroke="#10b981" strokeDasharray="3 3" />
+                      <Bar dataKey="predicted" fill="#f43f5e" name={`Predicted ${pollutant.name}`} />
+                      <Bar dataKey="safeLimit" fill="#10b981" name="WHO Safe Limit" opacity={0.4} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
 
-              <div className="chart-container">
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={timeline}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis
-                      dataKey="label"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 10 }}
-                      interval={timeline.length > 20 ? 5 : timeline.length > 10 ? 2 : 0}
-                    />
-                    <YAxis axisLine={false} tickLine={false} width={70} tickFormatter={v => v >= 1000 ? v.toExponential(1) : v < 0.01 ? v.toExponential(1) : v.toFixed(4)} domain={[0, globalYMax]} />
-                    <Tooltip
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                      formatter={(value) => [
-                        value >= 1000 ? value.toExponential(2) : value < 0.01 ? value.toExponential(2) : value.toFixed(5),
-                        `🔮 Predicted ${pollutant.name}`
-                      ]}
-                    />
-                    <ReferenceLine y={WHO_SAFE_LIMIT} stroke="#10b981" strokeDasharray="6 3" strokeWidth={2} label={{ value: `WHO Safe (${WHO_SAFE_LIMIT})`, position: 'right', fill: '#10b981', fontSize: 10, fontWeight: 700 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#f43f5e"
-                      strokeWidth={3}
-                      dot={timeline.length <= 30}
-                      activeDot={{ r: 6, strokeWidth: 0 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-                <p className="prediction-note">
-                  * Every data point is a real ML model prediction · Values in {pollutant.unit} · Green line = WHO safe threshold
-                </p>
-              </div>
-            </div>
-
-            {/* Historical Comparison Table */}
-            {hasHistory && predData?.comparison_table && (
-              <div className={`chart-card wide card-enter`}>
-                <div className="card-header" style={{ marginBottom: '24px' }}>
-                  <div className="title-with-badge">
-                    <h3>📊 Model Accuracy — Historical Validation</h3>
-                    <span className="badge-ai">Ground Truth Comparison</span>
-                  </div>
-                  <p className="prediction-note" style={{marginTop: 8, fontSize: '12px'}}>
-                    Compares Open-Meteo ERA5 weather driven ML predictions against real satellite observations.
-                  </p>
-                </div>
-                
-                <div className="table-responsive" style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '13px', textTransform: 'uppercase' }}>
-                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>Period</th>
-                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>🔮 Model Predicted (Avg)</th>
-                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>📡 Real Observed (Avg)</th>
-                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>Variance</th>
-                        <th style={{ padding: '16px 12px', fontWeight: 700 }}>Data Points</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {predData.comparison_table.map((row, idx) => {
-                        const isMissing = row.model_predicted_avg === null || row.data_points === 0;
-                        const varColor = Math.abs(row.variance_pct) <= 15 ? '#10b981' : Math.abs(row.variance_pct) <= 30 ? '#f59e0b' : '#ef4444';
-                        const formatter = (v) => v === null ? 'N/A' : (v >= 1000 ? v.toExponential(2) : v < 0.01 ? v.toExponential(2) : v.toFixed(5));
-
-                        return (
-                          <tr key={idx} style={{ 
-                            borderBottom: '1px solid #f1f5f9',
-                            background: 'transparent'
-                          }}>
-                            <td style={{ padding: '16px 12px', fontWeight: 500, color: '#475569' }}>
-                              {row.period}
-                            </td>
-                            <td style={{ padding: '16px 12px', fontFamily: 'monospace', fontSize: '14px', color: '#334155' }}>
-                              {formatter(row.model_predicted_avg)}
-                              {!isMissing && <span style={{fontSize: '11px', color: '#94a3b8', marginLeft: 6}}>{pollutant.unit}</span>}
-                            </td>
-                            <td style={{ padding: '16px 12px', fontFamily: 'monospace', fontSize: '14px', color: '#334155' }}>
-                              {formatter(row.real_observed_avg)}
-                              {!isMissing && <span style={{fontSize: '11px', color: '#94a3b8', marginLeft: 6}}>{pollutant.unit}</span>}
-                            </td>
-                            <td style={{ padding: '16px 12px', fontWeight: 600, color: isMissing ? '#94a3b8' : varColor }}>
-                              {isMissing ? 'N/A' : `${row.variance_pct > 0 ? '+' : ''}${row.variance_pct.toFixed(1)}%`}
-                            </td>
-                            <td style={{ padding: '16px 12px', color: '#64748b' }}>
-                              {row.data_points} <span style={{fontSize: '11px'}}>months</span>
-                            </td>
+              {hasHistory && predData?.comparison_table && (
+                <div className="chart-card wide card-enter" style={{ gridColumn: 'span 3' }}>
+                   <div className="card-header">
+                      <h3>📊 Model Accuracy — Historical Validation</h3>
+                   </div>
+                   <div className="table-responsive">
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
+                            <th style={{ padding: '12px' }}>Period</th>
+                            <th style={{ padding: '12px' }}>🔮 Predicted</th>
+                            <th style={{ padding: '12px' }}>📡 Real Observed</th>
+                            <th style={{ padding: '12px' }}>Variance</th>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        </thead>
+                        <tbody>
+                          {predData.comparison_table.map((row, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                              <td style={{ padding: '12px' }}>{row.period}</td>
+                              <td style={{ padding: '12px' }}>{row.model_predicted_avg?.toFixed(5)}</td>
+                              <td style={{ padding: '12px' }}>{row.real_observed_avg?.toFixed(5)}</td>
+                              <td style={{ padding: '12px', fontWeight: 600, color: row.variance_pct > 0 ? '#ef4444' : '#10b981' }}>
+                                {row.variance_pct?.toFixed(1)}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                   </div>
+                </div>
+              )}
+
+              <div className="chart-card full card-enter" style={{ gridColumn: 'span 3', marginTop: '32px' }}>
+                <div className="card-header">
+                  <h3>🩺 Health & Environmental Insight</h3>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '40px' }}>
+                  <div>
+                    <h4 style={{ color: 'var(--primary)', marginBottom: '12px' }}>About {pollutant.name}</h4>
+                    <p>{POLLUTANT_DETAILS[pollutantType]?.description}</p>
+                  </div>
+                  <div>
+                    <h4 style={{ color: whoStatus?.color || 'var(--text-main)' }}>{whoStatus?.label || 'Calculating...'} Range Advice</h4>
+                    <p><strong>Health:</strong> {whoStatus?.label ? POLLUTANT_DETAILS[pollutantType]?.health_advice[whoStatus.label]?.health : 'Analyzing atmospheric conditions...'}</p>
+                    <p><strong>Action:</strong> {whoStatus?.label ? POLLUTANT_DETAILS[pollutantType]?.health_advice[whoStatus.label]?.action : 'Please wait for model synchronization.'}</p>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '32px', padding: '32px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '32px', border: '1px solid rgba(99, 102, 241, 0.15)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+                    <h4 style={{ margin: 0 }}>Gemini AI Deep Analysis</h4>
+                    <button onClick={() => fetchAiInsight(pollutant.name, currentValue, pollutant.unit, whoStatus?.label)} disabled={isAiLoading} className="btn-refetch">
+                      <RefreshCw size={14} className={isAiLoading ? 'spin' : ''} /> Refetch Analysis
+                    </button>
+                  </div>
+                  {isAiLoading ? (
+                    <div className="dot-typing" style={{ margin: '40px auto' }}></div>
+                  ) : aiInsight && typeof aiInsight === 'object' ? (
+                    <div className="ai-insight-grid">
+                      <div className="ai-insight-item">
+                        <strong>Short-term Effects</strong>
+                        <p>{String(aiInsight.short_term_effects || 'No data')}</p>
+                      </div>
+                      <div className="ai-insight-item">
+                        <strong>Long-term Risks</strong>
+                        <p>{String(aiInsight.long_term_effects || 'No data')}</p>
+                      </div>
+                      <div className="ai-insight-item">
+                        <strong>Vulnerable Groups</strong>
+                        <p>{String(aiInsight.vulnerable_groups || 'No data')}</p>
+                      </div>
+                      <div className="ai-insight-item">
+                        <strong>Environmental Impact</strong>
+                        <p>{String(aiInsight.environmental_impact || 'No data')}</p>
+                      </div>
+                      <div className="ai-insight-item full-width" style={{ gridColumn: 'span 2' }}>
+                        <strong>Personalized Action Plan</strong>
+                        <ul className="ai-action-list">
+                          {Array.isArray(aiInsight.action_plan) ? aiInsight.action_plan.map((step, i) => (
+                            <li key={i} className="ai-action-item">
+                              <div className="ai-action-dot"></div>
+                              {String(step)}
+                            </li>
+                          )) : <li>{String(aiInsight.action_plan || 'No specific actions')}</li>}
+                        </ul>
+                      </div>
+                      <div className="ai-insight-item scientific">
+                        <strong>Scientific Fact</strong>
+                        <p style={{ fontStyle: 'italic', opacity: 0.9 }}>{String(aiInsight.scientific_fact || 'No data')}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '15px', color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+                      {aiInsight || "Analyzing atmospheric chemistry for personalized recommendations..."}
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-
-          </div>
+            </div>
           </>
         )}
       </main>

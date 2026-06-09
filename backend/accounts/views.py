@@ -13,11 +13,12 @@ from .serializers import (
 # ── Live predictors (loaded once at startup) ─────────────────────────────────
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from co_predictor import co_predictor
-from no2_predictor import no2_predictor
-from o3_predictor import o3_predictor
-from so2_predictor import so2_predictor
+from predictor.co_predictor import co_predictor
+from predictor.no2_predictor import no2_predictor
+from predictor.o3_predictor import o3_predictor
+from predictor.so2_predictor import so2_predictor
 from weather_service import get_live_weather
+from ai_service import get_pollution_insight
 
 
 class UserView(APIView):
@@ -115,6 +116,23 @@ def _get_range(request):
     return r if r in VALID_RANGES else '1Y'
 
 
+def _get_overrides(request):
+    """Extract potential 'What-If' parameter overrides from query params."""
+    overrides = {}
+    params = [
+        'temp', 'cld', 'wind_speed', 'wind_dir', 'pbl', 'pop', 'elev', 
+        'urban', 'night', 'dewpoint', 'pressure', 'solar', 'aai'
+    ]
+    for p in params:
+        val = request.query_params.get(p)
+        if val:
+            try:
+                overrides[p] = float(val)
+            except ValueError:
+                pass
+    return overrides if overrides else None
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # CO VIEWS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -134,7 +152,8 @@ class PredictCOView(APIView):
             return Response({'error': f"Town '{town.name}' has no coordinates."}, status=422)
 
         range_str = _get_range(request)
-        result = co_predictor.predict_for_town(town, range_str)
+        overrides = _get_overrides(request)
+        result = co_predictor.predict_for_town(town, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=500)
 
@@ -157,7 +176,8 @@ class PredictCOAtCoordsView(APIView):
             return Response({'error': 'lat and lon must be valid numbers.'}, status=400)
 
         range_str = _get_range(request)
-        result = co_predictor.predict_at_coords(lat, lon, range_str)
+        overrides = _get_overrides(request)
+        result = co_predictor.predict_at_coords(lat, lon, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=422)
 
@@ -217,7 +237,8 @@ class PredictNO2View(APIView):
             return Response({'error': f"Town '{town.name}' has no coordinates."}, status=422)
 
         range_str = _get_range(request)
-        result = no2_predictor.predict_for_town(town, range_str)
+        overrides = _get_overrides(request)
+        result = no2_predictor.predict_for_town(town, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=500)
 
@@ -240,7 +261,8 @@ class PredictNO2AtCoordsView(APIView):
             return Response({'error': 'lat and lon must be valid numbers.'}, status=400)
 
         range_str = _get_range(request)
-        result = no2_predictor.predict_at_coords(lat, lon, range_str)
+        overrides = _get_overrides(request)
+        result = no2_predictor.predict_at_coords(lat, lon, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=422)
 
@@ -298,7 +320,8 @@ class PredictO3View(APIView):
             return Response({'error': f"Town '{town.name}' has no coordinates."}, status=422)
 
         range_str = _get_range(request)
-        result = o3_predictor.predict_for_town(town, range_str)
+        overrides = _get_overrides(request)
+        result = o3_predictor.predict_for_town(town, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=500)
 
@@ -321,7 +344,8 @@ class PredictO3AtCoordsView(APIView):
             return Response({'error': 'lat and lon must be valid numbers.'}, status=400)
 
         range_str = _get_range(request)
-        result = o3_predictor.predict_at_coords(lat, lon, range_str)
+        overrides = _get_overrides(request)
+        result = o3_predictor.predict_at_coords(lat, lon, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=422)
 
@@ -379,7 +403,8 @@ class PredictSO2View(APIView):
             return Response({'error': f"Town '{town.name}' has no coordinates."}, status=422)
 
         range_str = _get_range(request)
-        result = so2_predictor.predict_for_town(town, range_str)
+        overrides = _get_overrides(request)
+        result = so2_predictor.predict_for_town(town, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=500)
 
@@ -402,7 +427,8 @@ class PredictSO2AtCoordsView(APIView):
             return Response({'error': 'lat and lon must be valid numbers.'}, status=400)
 
         range_str = _get_range(request)
-        result = so2_predictor.predict_at_coords(lat, lon, range_str)
+        overrides = _get_overrides(request)
+        result = so2_predictor.predict_at_coords(lat, lon, range_str, overrides=overrides)
         if result.get('error'):
             return Response({'error': result['error']}, status=422)
 
@@ -439,3 +465,33 @@ class MapDataSO2View(APIView):
                     'error': None,
                 })
         return Response(data)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AI INSIGHT VIEW
+# ══════════════════════════════════════════════════════════════════════════════
+
+class PollutionInsightView(APIView):
+    """Provides dynamic AI-generated health advice using Gemini."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        pollutant = request.query_params.get('pollutant')
+        value = request.query_params.get('value')
+        unit = request.query_params.get('unit')
+        status = request.query_params.get('status')
+
+        if not all([pollutant, value, unit, status]):
+            return Response({'error': 'Missing required parameters.'}, status=400)
+
+        insight = get_pollution_insight(pollutant, value, unit, status)
+        
+        if not insight:
+            return Response({
+                'insight': "AI integration in progress. Please refer to standard WHO safety guidelines.",
+                'is_ai': False
+            })
+
+        return Response({
+            'insight': insight,
+            'is_ai': True
+        })
