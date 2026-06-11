@@ -28,3 +28,5 @@ so2_weather_data/
 backend/*.pkl
 backend/*.json
 backend/*.tif
+backend/models/*.pkl
+backend/models/*.tif
