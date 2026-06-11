@@ -208,12 +208,12 @@ const Dashboard = ({ pollutantType = 'co' }) => {
   // ── Data fetching ─────────────────────────────────────────────────────────
 
   const fetchPrediction = useCallback(async (range = '1Y') => {
-    if (!profile?.preferred_town) return;
+    if (!profile?.latitude || !profile?.longitude) return;
     setLoading(true);
     setError(null);
     try {
       const predictFn = predictByType[pollutantType] || predictByType.co;
-      let data = await predictFn(profile.preferred_town, range, {});
+      let data = await predictFn(null, range, {});
       setSyncedAt(Date.now());
       const processed = processPollutantData(data);
       setSelectedCoords(null);
@@ -226,7 +226,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     } finally {
       setLoading(false);
     }
-  }, [profile?.preferred_town, pollutantType, pollutant.name, pollutant.whoLimit, pollutant.unit, processPollutantData, fetchAiInsight, getStatus]);
+  }, [profile?.latitude, profile?.longitude, pollutantType, pollutant.name, pollutant.whoLimit, pollutant.unit, processPollutantData, fetchAiInsight, getStatus]);
 
   const fetchAtCoords = useCallback(async (lat, lon, range = '1Y') => {
     setLoading(true);
@@ -257,7 +257,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     const fallbackToPreferred = () => {
       setHasAutoLocated(true);
       setShowLocationSelector(false); // Close selector if we have a preferred town
-      if (!profile?.preferred_town) {
+      if (!profile?.latitude || !profile?.longitude) {
         setShowLocationSelector(true);
         setLoading(false);
       } else {
@@ -283,7 +283,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     } else {
       fallbackToPreferred();
     }
-  }, [isLoggedIn, navigate, hasAutoLocated, fetchAtCoords, fetchPrediction, timeRange, profile?.preferred_town]);
+  }, [isLoggedIn, navigate, hasAutoLocated, fetchAtCoords, fetchPrediction, timeRange, profile?.latitude, profile?.longitude]);
 
   // ── Parameter Synchronisation Effect ──────────────────────────────────────
   // Triggers when pollutant type or time range changes, for the CURRENT location
@@ -292,11 +292,11 @@ const Dashboard = ({ pollutantType = 'co' }) => {
 
     if (selectedCoords?.lat != null && selectedCoords?.lon != null) {
       fetchAtCoords(selectedCoords.lat, selectedCoords.lon, timeRange);
-    } else if (profile?.preferred_town) {
+    } else if (profile?.latitude && profile?.longitude) {
       fetchPrediction(timeRange);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pollutantType, timeRange, profile?.preferred_town]); 
+  }, [pollutantType, timeRange, profile?.latitude, profile?.longitude]); 
 
 
   // Separate effect for simulation — only triggers on WEATHER overrides, not time_focus
@@ -321,7 +321,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
         if (predData?.is_custom) {
           data = await predictAtFn(predData.latitude, predData.longitude, timeRange, weatherOverrides);
         } else {
-          data = await predictFn(profile.preferred_town, timeRange, weatherOverrides);
+          data = await predictFn(null, timeRange, weatherOverrides);
         }
         if (data?.error) {
           setSimError(data.error);
@@ -342,7 +342,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
 
     const timer = setTimeout(fetchSimulation, 600);
     return () => clearTimeout(timer);
-  }, [overrides, pollutantType, predData, profile?.preferred_town, timeRange, processPollutantData, getStatus, fetchAiInsight, pollutant.name, pollutant.whoLimit, pollutant.unit]);
+  }, [overrides, pollutantType, predData, profile?.latitude, profile?.longitude, timeRange, processPollutantData, getStatus, fetchAiInsight, pollutant.name, pollutant.whoLimit, pollutant.unit]);
 
   const handleOverrideChange = (key, value) => {
     const numericValue = parseFloat(value);
@@ -613,7 +613,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
           </div>
         </div>
 
-        {loading && (
+        {loading && !predData && (
           <div className="dashboard-grid">
             <div className="chart-card wide map-card skeleton-card">
               <div className="skeleton skeleton-line w-40"></div>
@@ -628,7 +628,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
           </div>
         )}
 
-        {!loading && !error && predData && (
+        {(!loading || predData) && !error && predData && (
           <>
             {weatherData && (
               <div className="weather-ingredients">

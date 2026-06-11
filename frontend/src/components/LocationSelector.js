@@ -1,83 +1,89 @@
-import React, { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import React, { useState } from 'react';
+import { useDispatch } from 'react-redux';
 import { updateProfile } from '../store/authSlice';
-import locationService from '../services/locationService';
-import { MapPin, ArrowRight, Check } from 'lucide-react';
+import { MapPin, ArrowRight } from 'lucide-react';
 
 const LocationSelector = ({ onSelect }) => {
-  const [districts, setDistricts] = useState([]);
-  const [towns, setTowns] = useState([]);
-  const [selectedDistrict, setSelectedDistrict] = useState('');
-  const [selectedTown, setSelectedTown] = useState('');
-  
+  const [loading, setLoading] = useState(false);
+  const [coords, setCoords] = useState(null);
+  const [error, setError] = useState('');
+
   const dispatch = useDispatch();
-  const { profile } = useSelector((state) => state.auth);
 
-  useEffect(() => {
-    locationService.getDistricts().then(setDistricts);
-  }, []);
+  const getLocation = () => {
+    setError('');
+    setLoading(true);
 
-  useEffect(() => {
-    if (selectedDistrict) {
-      locationService.getTowns(selectedDistrict).then(setTowns);
-    } else {
-      setTowns([]);
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser');
+      setLoading(false);
+      return;
     }
-    setSelectedTown('');
-  }, [selectedDistrict]);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setCoords({ latitude, longitude });
+        setLoading(false);
+      },
+      (err) => {
+        setError('Permission denied or location unavailable');
+        setLoading(false);
+      }
+    );
+  };
 
   const handleSave = async () => {
-    if (selectedDistrict && selectedTown) {
-      const updatedProfile = await dispatch(updateProfile({
-        preferred_district: selectedDistrict,
-        preferred_town: selectedTown,
-      })).unwrap();
-      onSelect(updatedProfile);
-    }
+    if (!coords) return;
+
+    const updatedProfile = await dispatch(
+      updateProfile({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      })
+    ).unwrap();
+
+    onSelect(updatedProfile);
   };
 
   return (
     <div className="location-overlay">
       <div className="location-card">
+
         <div className="location-header">
           <MapPin className="loc-icon" />
-          <h2>Welcome to CarbonMonitor Odisha</h2>
-          <p>Please select your town to view localized insights.</p>
-        </div>
-        
-        <div className="form-group">
-          <label>Select District</label>
-          <select 
-            value={selectedDistrict} 
-            onChange={(e) => setSelectedDistrict(e.target.value)}
-            className="modern-select"
-          >
-            <option value="">Select a District</option>
-            {districts.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+          <h2>Enable Location Access</h2>
+          <p>We use GPS to show you localized carbon insights.</p>
         </div>
 
-        {selectedDistrict && (
-          <div className="form-group animate-in">
-            <label>Select Town</label>
-            <select 
-              value={selectedTown} 
-              onChange={(e) => setSelectedTown(e.target.value)}
-              className="modern-select"
-            >
-              <option value="">Select a Town</option>
-              {towns.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
+        {!coords && (
+          <button className="auth-btn" onClick={getLocation} disabled={loading}>
+            {loading ? 'Fetching Location...' : 'Use My Current Location'}{' '}
+            <ArrowRight size={18} />
+          </button>
+        )}
+
+        {coords && (
+          <div className="location-success">
+            <p>Location detected ✔</p>
+            <p>
+              Lat: {coords.latitude.toFixed(4)} <br />
+              Lng: {coords.longitude.toFixed(4)}
+            </p>
           </div>
         )}
 
-        <button 
-          className="auth-btn" 
-          disabled={!selectedTown}
+        {error && <p className="error-text">{error}</p>}
+
+        <button
+          className="auth-btn"
+          disabled={!coords}
           onClick={handleSave}
         >
-          {selectedTown ? 'Explore Dashboard' : 'Select Location'} <ArrowRight size={18} />
+          {coords ? 'Explore Dashboard' : 'Allow Location First'}{' '}
+          <ArrowRight size={18} />
         </button>
+
       </div>
     </div>
   );

@@ -212,14 +212,29 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
             }
 
             setDragResult(res);
+
+            if (onDataUpdate) {
+                onDataUpdate({
+                    ...res,
+                    latitude: res.latitude ?? lat,
+                    longitude: res.longitude ?? lng,
+                    lat: lat,
+                    lon: lng,
+                    is_custom: true,
+                });
+            }
             return res;
         } catch (e) {
-            setDragError(e.response?.data?.error || 'Prediction failed for this location.');
+            const errMsg = e.response?.data?.error || 'Prediction failed for this location.';
+            setDragError(errMsg);
+            if (onDataUpdate) {
+                onDataUpdate({ error: errMsg, loading: false });
+            }
             return null;
         } finally {
             setDragLoading(false);
         }
-    }, [pollutantType]);
+    }, [pollutantType, onDataUpdate]);
 
     // Auto-open popup whenever the probe result updates
     // (setTimeout gives React one tick to mount/update the Marker before calling openPopup)
@@ -230,24 +245,6 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
         }, 80);
         return () => clearTimeout(t);
     }, [dragPos, dragResult, dragError, dragLoading]);
-
-    useEffect(() => {
-        if (!onDataUpdate || dragLoading) return;
-
-        if (dragResult && dragPos) {
-            onDataUpdate({
-                ...dragResult,
-                latitude: dragResult.latitude ?? dragPos.lat,
-                longitude: dragResult.longitude ?? dragPos.lon,
-                lat: dragPos.lat,
-                lon: dragPos.lon,
-                is_custom: true,
-            });
-        } else if (dragError) {
-            // Ensure dashboard stops loading if there was an error
-            onDataUpdate({ error: dragError, loading: false });
-        }
-    }, [dragLoading, dragPos, dragResult, dragError, onDataUpdate]);
 
 
     const onMarkerDragEnd = useCallback(() => {

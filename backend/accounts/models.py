@@ -1,47 +1,50 @@
 from django.db import models
 from django.contrib.auth.models import User
 
-class District(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-    state = models.CharField(max_length=100, default='Odisha')
-
-    def __str__(self):
-        return self.name
-
-class Town(models.Model):
-    name = models.CharField(max_length=100)
-    district = models.ForeignKey(District, on_delete=models.CASCADE, related_name='towns')
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
-    pop = models.FloatField(null=True, blank=True)
-    elevation = models.FloatField(null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.name}, {self.district.name}"
-
-class CarbonEmission(models.Model):
-    SECTOR_CHOICES = [
-        ('Transport', 'Transport'),
-        ('Industrial', 'Industrial'),
-        ('Energy', 'Energy'),
-        ('Agriculture', 'Agriculture'),
-        ('Residential', 'Residential'),
-        ('CO', 'Carbon Monoxide'),
-    ]
-
-    town = models.ForeignKey(Town, on_delete=models.CASCADE, related_name='emissions')
-    sector = models.CharField(max_length=50, choices=SECTOR_CHOICES)
-    value = models.FloatField() # Value in metric tons of CO2 equivalent
-    date = models.DateField()
-    is_prediction = models.BooleanField(default=False)
-
-    def __str__(self):
-        return f"{self.town.name} - {self.sector} - {self.date}"
-
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    preferred_district = models.ForeignKey(District, on_delete=models.SET_NULL, null=True, blank=True)
-    preferred_town = models.ForeignKey(Town, on_delete=models.SET_NULL, null=True, blank=True)
+
+    # optional: last known GPS (for dashboard personalization)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
 
     def __str__(self):
         return self.user.username
+    
+class PollutionReading(models.Model):
+
+    POLLUTANT_CHOICES = [
+        ('CO', 'Carbon Monoxide'),
+        ('NO2', 'Nitrogen Dioxide'),
+        ('O3', 'Ozone'),
+        ('SO2', 'Sulfur Dioxide'),
+        ('PM25', 'PM2.5'),
+        ('PM10', 'PM10'),
+    ]
+
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+
+    pollutant_type = models.CharField(max_length=10, choices=POLLUTANT_CHOICES)
+    value = models.FloatField()  # AQI or concentration value
+
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    # optional metadata (very useful later)
+    source = models.CharField(max_length=50, default='sensor')  # sensor / api / ml
+    is_prediction = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.pollutant_type} @ ({self.latitude}, {self.longitude})"
+    
+class PollutionPrediction(models.Model):
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+
+    pollutant_type = models.CharField(max_length=10)
+
+    predicted_value = models.FloatField()
+    prediction_time = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Prediction {self.pollutant_type}"

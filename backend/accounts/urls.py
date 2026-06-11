@@ -1,9 +1,7 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView, TokenObtainPairView
 from .views import (
-    RegisterView, DistrictViewSet, TownViewSet, CarbonEmissionViewSet,
-    UserProfileView, UserView,
+    RegisterView, UserProfileView, UserView,
     # CO
     MapDataView, PredictCOView, PredictCOAtCoordsView,
     # NO2
@@ -15,11 +13,6 @@ from .views import (
     # AI
     PollutionInsightView,
 )
-
-router = DefaultRouter()
-router.register(r'districts', DistrictViewSet)
-router.register(r'towns', TownViewSet)
-router.register(r'emissions', CarbonEmissionViewSet)
 
 urlpatterns = [
     path('user/',              UserView.as_view(),                name='user'),
@@ -49,6 +42,4 @@ urlpatterns = [
     path('map-data-so2/',      MapDataSO2View.as_view(),          name='map-data-so2'),
     # AI Insight
     path('pollution-insight/', PollutionInsightView.as_view(),    name='pollution-insight'),
-
-    path('',                   include(router.urls)),
 ]
