@@ -58,8 +58,8 @@ AVAILABLE_YEARS = [2020, 2021, 2022, 2023, 2024, 2025]
 LATEST_DATA_DATE = datetime.date(2025, 12, 31)
 
 # Maximum distance (degrees) for nearest-pixel match
-# ~0.5° ≈ 55 km — anything beyond this returns "no data"
-MAX_PIXEL_DISTANCE = 0.5
+# ~1.5° (larger search radius so custom coordinates match nearest Odisha pixel)
+MAX_PIXEL_DISTANCE = 1.5
 
 # Comparison period definitions (label, months_back)
 COMPARISON_PERIODS = [

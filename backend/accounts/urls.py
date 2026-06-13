@@ -12,9 +12,13 @@ from .views import (
     PredictSO2View, PredictSO2AtCoordsView, MapDataSO2View,
     # AI
     PollutionInsightView,
+    # OpenAQ Proxy
+    OpenAQProxyLocationsView, OpenAQProxyLatestView,
 )
 
 urlpatterns = [
+    path('openaq/locations/',  OpenAQProxyLocationsView.as_view(), name='openaq-locations'),
+    path('openaq/locations/<int:location_id>/latest/', OpenAQProxyLatestView.as_view(), name='openaq-latest'),
     path('user/',              UserView.as_view(),                name='user'),
     path('register/',          RegisterView.as_view(),             name='register'),
     path('login/',             TokenObtainPairView.as_view(),     name='token_obtain_pair'),

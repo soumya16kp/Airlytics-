@@ -76,7 +76,7 @@ const LocationSelector = ({ onSelect }) => {
         {error && <p className="error-text">{error}</p>}
 
         <button
-          className="auth-btn"
+          className={`auth-btn ${coords ? 'explore-btn-active' : ''}`}
           disabled={!coords}
           onClick={handleSave}
         >

@@ -128,6 +128,16 @@ const getPollutionInsight = async (pollutant, value, unit, status) => {
   return response.data;
 };
 
+const getOpenAQLocations = async (bbox, limit = 30) => {
+  const response = await api.get('openaq/locations/', { params: { bbox, limit } });
+  return response.data;
+};
+
+const getOpenAQLatest = async (locationId) => {
+  const response = await api.get(`openaq/locations/${locationId}/latest/`);
+  return response.data;
+};
+
 const locationService = {
   getDistricts,
   getTowns,
@@ -152,6 +162,9 @@ const locationService = {
   predictSO2At,
   // AI
   getPollutionInsight,
+  // OpenAQ Proxy
+  getOpenAQLocations,
+  getOpenAQLatest,
 };
 
 export default locationService;

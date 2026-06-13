@@ -27,6 +27,7 @@ function App() {
             <Route path="/dashboard/no2" element={<Dashboard pollutantType="no2" />} />
             <Route path="/dashboard/so2" element={<Dashboard pollutantType="so2" />} />
             <Route path="/dashboard/o3" element={<Dashboard pollutantType="o3" />} />
+            <Route path="/dashboard/ground" element={<Dashboard pollutantType="ground" />} />
             
             {/* Legacy route redirects to CO */}
             <Route path="/dashboard" element={<Navigate to="/dashboard/co" replace />} />

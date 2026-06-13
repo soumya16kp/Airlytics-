@@ -14,6 +14,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import RegionalMap from './RegionalMap';
+import GroundData from './GroundData';
 
 // Pollutant display config
 const POLLUTANT_LABELS = {
@@ -179,6 +180,17 @@ const Dashboard = ({ pollutantType = 'co' }) => {
         else if (pollutantType === 'o3')  m = (molarMass * 0.1) / pointPbl;
         else m = (molarMass * 1000000) / pointPbl; // no2
         return { ...t, value: t.value * m };
+      });
+    }
+    if (processed.comparison_table) {
+      processed.comparison_table = processed.comparison_table.map(row => {
+        let m = MULTIPLIER;
+        // Adjust multiplier if needed, or apply general pollutant conversion to align units
+        return {
+          ...row,
+          model_predicted_avg: row.model_predicted_avg !== null ? row.model_predicted_avg * m : null,
+          real_observed_avg: row.real_observed_avg !== null ? row.real_observed_avg * m : null,
+        };
       });
     }
     return processed;
@@ -521,6 +533,10 @@ const Dashboard = ({ pollutantType = 'co' }) => {
             <svg className="pollutant-tab-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.5"/><line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
             <span>O<sub>3</sub></span>
           </NavLink>
+          <NavLink to="/dashboard/ground" className={({ isActive }) => `pollutant-tab ${isActive ? 'active' : ''}`}>
+            <svg className="pollutant-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Ground Station</span>
+          </NavLink>
         </div>
 
         <div className="navbar-actions">
@@ -539,7 +555,11 @@ const Dashboard = ({ pollutantType = 'co' }) => {
       </nav>
 
       <main className="dashboard-main dashboard-analytics">
-        <div className="header-flex">
+        {pollutantType === 'ground' ? (
+          <GroundData latitude={displayLat} longitude={displayLon} />
+        ) : (
+          <>
+            <div className="header-flex">
           <div className="welcome-section">
             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
               <h1>{predData?.is_custom ? 'Live Location' : (predData?.town_name || profile?.preferred_town_name)} — {pollutant.name} Dashboard</h1>
@@ -822,30 +842,36 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                    <div className="card-header">
                       <h3>📊 Model Accuracy — Historical Validation</h3>
                    </div>
-                   <div className="table-responsive">
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
-                            <th style={{ padding: '12px' }}>Period</th>
-                            <th style={{ padding: '12px' }}>🔮 Predicted</th>
-                            <th style={{ padding: '12px' }}>📡 Real Observed</th>
-                            <th style={{ padding: '12px' }}>Variance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {predData.comparison_table.map((row, idx) => (
-                            <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                              <td style={{ padding: '12px' }}>{row.period}</td>
-                              <td style={{ padding: '12px' }}>{row.model_predicted_avg?.toFixed(5)}</td>
-                              <td style={{ padding: '12px' }}>{row.real_observed_avg?.toFixed(5)}</td>
-                              <td style={{ padding: '12px', fontWeight: 600, color: row.variance_pct > 0 ? '#ef4444' : '#10b981' }}>
-                                {row.variance_pct?.toFixed(1)}%
-                              </td>
+                   {predData.comparison_table.every(row => !row.data_points || row.data_points === 0) ? (
+                     <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px', color: '#b45309' }}>
+                       ⚠ No historical satellite observations or weather data found near these coordinates. Try selecting a different location.
+                     </div>
+                   ) : (
+                     <div className="table-responsive">
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
+                              <th style={{ padding: '12px' }}>Period</th>
+                              <th style={{ padding: '12px' }}>🔮 Predicted</th>
+                              <th style={{ padding: '12px' }}>📡 Real Observed</th>
+                              <th style={{ padding: '12px' }}>Variance</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                   </div>
+                          </thead>
+                          <tbody>
+                            {predData.comparison_table.map((row, idx) => (
+                              <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                <td style={{ padding: '12px' }}>{row.period}</td>
+                                <td style={{ padding: '12px' }}>{row.model_predicted_avg != null ? row.model_predicted_avg.toFixed(5) : '--'}</td>
+                                <td style={{ padding: '12px' }}>{row.real_observed_avg != null ? row.real_observed_avg.toFixed(5) : '--'}</td>
+                                <td style={{ padding: '12px', fontWeight: 600, color: row.variance_pct > 0 ? '#ef4444' : '#10b981' }}>
+                                  {row.variance_pct != null ? `${row.variance_pct.toFixed(1)}%` : '--'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                     </div>
+                   )}
                 </div>
               )}
 
@@ -916,6 +942,8 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                 </div>
               </div>
             </div>
+          </>
+        )}
           </>
         )}
       </main>
