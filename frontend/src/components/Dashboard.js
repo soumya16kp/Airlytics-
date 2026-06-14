@@ -183,15 +183,23 @@ const Dashboard = ({ pollutantType = 'co' }) => {
       });
     }
     if (processed.comparison_table) {
-      processed.comparison_table = processed.comparison_table.map(row => {
-        let m = MULTIPLIER;
-        // Adjust multiplier if needed, or apply general pollutant conversion to align units
-        return {
-          ...row,
-          model_predicted_avg: row.model_predicted_avg !== null ? row.model_predicted_avg * m : null,
-          real_observed_avg: row.real_observed_avg !== null ? row.real_observed_avg * m : null,
-        };
-      });
+      // For SO2 and O3: the backend already computes both predicted and observed
+      // in the same native training units (µmol/m² for SO2, scaled DU for O3)
+      // and pre-computes variance_pct from those aligned values.
+      // Applying a single current-snapshot PBL multiplier here would inflate
+      // the displayed numbers and make the model look inaccurate — skip conversion.
+      // The table is displayed as-is in native units with variance_pct from backend.
+      if (pollutantType === 'so2' || pollutantType === 'o3') {
+        // No conversion — keep native units for accuracy
+      } else {
+        processed.comparison_table = processed.comparison_table.map(row => {
+          return {
+            ...row,
+            model_predicted_avg: row.model_predicted_avg !== null ? row.model_predicted_avg * MULTIPLIER : null,
+            real_observed_avg: row.real_observed_avg !== null ? row.real_observed_avg * MULTIPLIER : null,
+          };
+        });
+      }
     }
     return processed;
   }, [pollutantType, pollutant.molarMass]);
@@ -841,6 +849,11 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                 <div className="chart-card wide card-enter" style={{ gridColumn: 'span 3' }}>
                    <div className="card-header">
                       <h3>📊 Model Accuracy — Historical Validation</h3>
+                      {(pollutantType === 'so2' || pollutantType === 'o3') && (
+                        <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+                          * Note: Native satellite units used for {pollutant.name} (SO₂ in µmol/m², O₃ in DU).
+                        </p>
+                      )}
                    </div>
                    {predData.comparison_table.every(row => !row.data_points || row.data_points === 0) ? (
                      <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '12px', padding: '16px', color: '#b45309' }}>
@@ -852,8 +865,8 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                           <thead>
                             <tr style={{ borderBottom: '2px solid #e2e8f0', textAlign: 'left' }}>
                               <th style={{ padding: '12px' }}>Period</th>
-                              <th style={{ padding: '12px' }}>🔮 Predicted</th>
-                              <th style={{ padding: '12px' }}>📡 Real Observed</th>
+                              <th style={{ padding: '12px' }}>🔮 Predicted ({pollutantType === 'so2' ? 'µmol/m²' : pollutantType === 'o3' ? 'DU' : pollutant.unit})</th>
+                              <th style={{ padding: '12px' }}>📡 Real Observed ({pollutantType === 'so2' ? 'µmol/m²' : pollutantType === 'o3' ? 'DU' : pollutant.unit})</th>
                               <th style={{ padding: '12px' }}>Variance</th>
                             </tr>
                           </thead>
