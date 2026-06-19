@@ -6,6 +6,7 @@ import Login from './components/Login';
 import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import ErrorBoundary from './components/ErrorBoundary';
+import HomePage from './components/HomePage';
 
 function App() {
   const dispatch = useDispatch();
@@ -19,8 +20,8 @@ function App() {
       <div className="App">
         <ErrorBoundary>
           <Routes>
-            {/* Redirect root to CO dashboard */}
-            <Route path="/" element={<Navigate to="/dashboard/co" replace />} />
+            {/* Home page shown after login before users enter analytics */}
+            <Route path="/" element={<HomePage />} />
             
             {/* Pollutant-specific dashboard routes */}
             <Route path="/dashboard/co" element={<Dashboard pollutantType="co" />} />

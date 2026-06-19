@@ -14,10 +14,14 @@ from .views import (
     PollutionInsightView,
     # OpenAQ Proxy
     OpenAQProxyLocationsView, OpenAQProxyLatestView,
+    # GEE
+    GEETileView,
 )
 
 urlpatterns = [
+    path('gee/tile/',          GEETileView.as_view(),             name='gee-tile'),
     path('openaq/locations/',  OpenAQProxyLocationsView.as_view(), name='openaq-locations'),
+
     path('openaq/locations/<int:location_id>/latest/', OpenAQProxyLatestView.as_view(), name='openaq-latest'),
     path('user/',              UserView.as_view(),                name='user'),
     path('register/',          RegisterView.as_view(),             name='register'),

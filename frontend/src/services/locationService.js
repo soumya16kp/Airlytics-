@@ -138,6 +138,11 @@ const getOpenAQLatest = async (locationId) => {
   return response.data;
 };
 
+const getGEETile = async (pollutant) => {
+  const response = await api.get('gee/tile/', { params: { pollutant } });
+  return response.data;
+};
+
 const locationService = {
   getDistricts,
   getTowns,
@@ -165,6 +170,9 @@ const locationService = {
   // OpenAQ Proxy
   getOpenAQLocations,
   getOpenAQLatest,
+  // GEE
+  getGEETile,
 };
 
 export default locationService;
+
