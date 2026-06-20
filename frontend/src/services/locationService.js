@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api/';
+const normalizeApiUrl = (url) => (url.endsWith('/') ? url : `${url}/`);
+const API_URL = normalizeApiUrl(process.env.REACT_APP_API_URL || 'http://localhost:8000/api');
 
 const api = axios.create({
   baseURL: API_URL,

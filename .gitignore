@@ -30,3 +30,10 @@ backend/*.json
 backend/*.tif
 backend/models/*.pkl
 backend/models/*.tif
+# Local frontend env and service account keys
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+frontend/*service-account*.json
+frontend/*credentials*.json
+frontend/*key*.json

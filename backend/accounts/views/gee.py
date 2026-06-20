@@ -1,27 +1,52 @@
 import os
 import json
 import datetime
-import ee
-from django.conf import settings
+try:
+    import ee
+except ImportError:
+    ee = None
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-# Resolve the service key path relative to this file
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-KEY_PATH = os.path.abspath(os.path.join(CURRENT_DIR, "..", "..", "..", "frontend", "asymtotes-05b94e2a6039.json"))
+
+GEE_INITIALIZATION_ERROR = None
+
+
+def get_gee_credentials():
+    if ee is None:
+        raise RuntimeError('earthengine-api is not installed')
+
+    key_json = os.environ.get('GEE_SERVICE_ACCOUNT_JSON')
+    key_path = os.environ.get('GEE_SERVICE_ACCOUNT_KEY_PATH')
+
+    if key_json:
+        key_data = json.loads(key_json)
+        email = os.environ.get('GEE_SERVICE_ACCOUNT_EMAIL') or key_data['client_email']
+        return ee.ServiceAccountCredentials(email, key_data=json.dumps(key_data))
+
+    if key_path:
+        with open(key_path) as f:
+            key_data = json.load(f)
+        email = os.environ.get('GEE_SERVICE_ACCOUNT_EMAIL') or key_data['client_email']
+        return ee.ServiceAccountCredentials(email, key_path)
+
+    raise RuntimeError('Set GEE_SERVICE_ACCOUNT_JSON or GEE_SERVICE_ACCOUNT_KEY_PATH')
+
 
 # Initialize GEE once at startup
+
 def initialize_ee():
+    global GEE_INITIALIZATION_ERROR
     try:
-        with open(KEY_PATH) as f:
-            key_data = json.load(f)
-        email = key_data['client_email']
-        credentials = ee.ServiceAccountCredentials(email, KEY_PATH)
+        credentials = get_gee_credentials()
         ee.Initialize(credentials)
-        print("Earth Engine initialized successfully in gee.py")
+        GEE_INITIALIZATION_ERROR = None
+        print('Earth Engine initialized successfully in gee.py')
     except Exception as e:
-        print(f"Error initializing Earth Engine at startup: {e}")
+        GEE_INITIALIZATION_ERROR = str(e)
+        print(f'Error initializing Earth Engine at startup: {e}')
+
 
 initialize_ee()
 
@@ -73,28 +98,28 @@ POLLUTANT_CONFIGS = {
     }
 }
 
+
 class GEETileView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def get(self, request):
+        if GEE_INITIALIZATION_ERROR:
+            return Response({'error': GEE_INITIALIZATION_ERROR}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
         pollutant = request.query_params.get('pollutant', 'no2').lower()
         if pollutant not in POLLUTANT_CONFIGS:
             return Response({'error': f'Unsupported pollutant: {pollutant}'}, status=status.HTTP_400_BAD_REQUEST)
 
         config = POLLUTANT_CONFIGS[pollutant]
-        
-        try:
-            # Get date range: last 14 days to ensure coverage
 
+        try:
             end_date = datetime.date.today()
             start_date = end_date - datetime.timedelta(days=14)
-            
-            # Load collection
+
             col = ee.ImageCollection(config['collection']) \
                 .filterDate(start_date.strftime('%Y-%m-%d'), (end_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')) \
                 .select(config['band'])
 
-            # Fallback if 14 days returns no images (just load last 30 days)
             if col.size().getInfo() == 0:
                 start_date = end_date - datetime.timedelta(days=30)
                 col = ee.ImageCollection(config['collection']) \
@@ -102,20 +127,15 @@ class GEETileView(APIView):
                     .select(config['band'])
 
             image = col.mean()
-
-            # Clip to India boundary
-            india = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017").filter(ee.Filter.eq('country_na', 'India'))
+            india = ee.FeatureCollection('USDOS/LSIB_SIMPLE/2017').filter(ee.Filter.eq('country_na', 'India'))
             image_clipped = image.clip(india)
-
-            # Get Map ID for Leaflet TileLayer
             map_id_dict = image_clipped.getMapId(config['vis'])
-            tile_url = map_id_dict['tile_fetcher'].url_format
 
             return Response({
                 'pollutant': pollutant,
-                'tile_url': tile_url,
+                'tile_url': map_id_dict['tile_fetcher'].url_format,
                 'vis_params': config['vis']
             })
-            
+
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,9 +1,11 @@
+import os
+
 import requests
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-OPENAQ_API_KEY = '7df3613a1cd7ef856e545d699316b4f907d45e88246cde6a7932a27895a33007'
+OPENAQ_API_KEY = os.environ.get('OPENAQ_API_KEY', '')
 OPENAQ_BASE_URL = 'https://api.openaq.org/v3'
 
 class OpenAQProxyLocationsView(APIView):

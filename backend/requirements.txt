@@ -13,3 +13,4 @@ requests
 pandas
 google-generativeai
 python-dotenv
+earthengine-api
