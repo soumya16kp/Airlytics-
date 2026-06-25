@@ -12,6 +12,12 @@ class OpenAQProxyLocationsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        if not OPENAQ_API_KEY:
+            return Response(
+                {'error': 'OPENAQ_API_KEY is not configured on the server. Please add it to your .env file.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
         bbox = request.query_params.get('bbox')
         limit = request.query_params.get('limit', 30)
 
@@ -36,6 +42,12 @@ class OpenAQProxyLatestView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, location_id):
+        if not OPENAQ_API_KEY:
+            return Response(
+                {'error': 'OPENAQ_API_KEY is not configured on the server. Please add it to your .env file.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
         headers = {
             'X-API-Key': OPENAQ_API_KEY
         }
