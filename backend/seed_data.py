@@ -2,10 +2,10 @@ import os
 import django
 
 # Set up Django environment
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core_project.settings')
 django.setup()
 
-from accounts.models import District, Town, CarbonEmission
+from api_app.models import District, Town, CarbonEmission
 import datetime
 import random
 

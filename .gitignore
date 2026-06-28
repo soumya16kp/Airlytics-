@@ -25,15 +25,20 @@ no2_weather_data/
 o3_weather_data/
 so2_weather_data/
 
-backend/*.pkl
-backend/*.json
-backend/*.tif
-backend/models/*.pkl
-backend/models/*.tif
+*.pkl
+*.json
+*.tif
+*models/*.pkl
+*models/*.tif
+*.env
+models/*.tif
 # Local frontend env and service account keys
-frontend/.env
-frontend/.env.*
-!frontend/.env.example
-frontend/*service-account*.json
-frontend/*credentials*.json
-frontend/*key*.json
+*.env
+*.env.*
+!*.env.example
+*service-account*.json
+*credentials*.json
+*key*.json
+*.cbm
+models/*.cbm
+db.sqlite3

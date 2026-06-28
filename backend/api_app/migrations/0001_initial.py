@@ -48,7 +48,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="towns",
-                        to="accounts.district",
+                        to="api_app.district",
                     ),
                 ),
             ],
@@ -86,7 +86,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="emissions",
-                        to="accounts.town",
+                        to="api_app.town",
                     ),
                 ),
             ],
@@ -109,7 +109,7 @@ class Migration(migrations.Migration):
                         blank=True,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
-                        to="accounts.district",
+                        to="api_app.district",
                     ),
                 ),
                 (
@@ -118,7 +118,7 @@ class Migration(migrations.Migration):
                         blank=True,
                         null=True,
                         on_delete=django.db.models.deletion.SET_NULL,
-                        to="accounts.town",
+                        to="api_app.town",
                     ),
                 ),
                 (

@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("accounts", "0004_town_elevation_town_pop"),
+        ("api_app", "0004_town_elevation_town_pop"),
     ]
 
     operations = [

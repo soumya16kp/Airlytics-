@@ -10,11 +10,12 @@ import {
   ArrowUp, ArrowDown, RefreshCw
 } from 'lucide-react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import RegionalMap from './RegionalMap';
 import GroundData from './GroundData';
+import HistoricalCompareGraph from './HistoricalCompareGraph';
 
 // Pollutant display config
 const POLLUTANT_LABELS = {
@@ -446,18 +447,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
     }));
   }, [predData]);
 
-  const barData = useMemo(() => {
-    return timeline.map(item => ({
-      label:     item.label,
-      predicted: item.value,
-      safeLimit: WHO_SAFE_LIMIT,
-    }));
-  }, [timeline, WHO_SAFE_LIMIT]);
-
-  const globalYMax = useMemo(() => {
-    if (!timeline.length) return WHO_SAFE_LIMIT * 1.5;
-    return Math.max(...timeline.map(d => d.value), WHO_SAFE_LIMIT) * 1.2;
-  }, [timeline, WHO_SAFE_LIMIT]);
+  // barData and globalYMax removed
 
   const currentValue = useMemo(() => {
     if (!predData?.base_value_2026) return null;
@@ -499,7 +489,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
   }, [currentValue, WHO_SAFE_LIMIT]);
 
   const weatherData = predData?.weather_snapshot || null;
-  const hasHistory = pollutantType === 'so2' || pollutantType === 'o3';
+  const hasHistory = pollutantType === 'so2' || pollutantType === 'o3' || pollutantType === 'no2';
   const isCustomLocation = selectedCoords?.lat != null && selectedCoords?.lon != null;
   const displayLat = predData?.latitude ?? selectedCoords?.lat;
   const displayLon = predData?.longitude ?? selectedCoords?.lon;
@@ -829,20 +819,17 @@ const Dashboard = ({ pollutantType = 'co' }) => {
               </div>
 
               <div className="chart-card wide card-enter" style={{ gridColumn: 'span 3' }}>
-                <div className="card-container">
-                  <ResponsiveContainer width="100%" height={400}>
-                    <BarChart data={barData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="label" />
-                      <YAxis domain={[0, globalYMax]} />
-                      <Tooltip />
-                      <Legend />
-                      <ReferenceLine y={WHO_SAFE_LIMIT} stroke="#10b981" strokeDasharray="3 3" />
-                      <Bar dataKey="predicted" fill="#f43f5e" name={`Predicted ${pollutant.name}`} />
-                      <Bar dataKey="safeLimit" fill="#10b981" name="WHO Safe Limit" opacity={0.4} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                <div className="card-header">
+                  <h3>📈 Historical Satellite vs ML Prediction</h3>
                 </div>
+                <HistoricalCompareGraph
+                  lat={displayLat}
+                  lon={displayLon}
+                  pollutant={pollutantType}
+                  whoLimit={WHO_SAFE_LIMIT}
+                  pollutantName={pollutant.name}
+                  unit={pollutant.unit}
+                />
               </div>
 
               {hasHistory && predData?.comparison_table && (

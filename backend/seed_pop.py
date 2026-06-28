@@ -3,10 +3,10 @@ import django
 import pandas as pd
 import numpy as np
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core_project.settings')
 django.setup()
 
-from accounts.models import Town
+from api_app.models import Town
 
 def seed_population_and_elevation():
     csv_path = os.path.join('New folder', 'SO2_Odisha_2020.csv')

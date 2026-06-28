@@ -2,7 +2,7 @@ import ee
 import datetime
 import math
 import pandas as pd
-from accounts.views.gee import initialize_ee
+from api_app.views.gee import initialize_ee
 
 class EarthEngineExtractor:
     def __init__(self):

@@ -21,3 +21,5 @@ yarn-debug.log*
 yarn-error.log*
 
 asymtotes-05b94e2a6039.json
+.env
+gee-credentials.json

@@ -144,6 +144,13 @@ const getGEETile = async (pollutant) => {
   return response.data;
 };
 
+const getComparison = async ({ lat, lon, pollutant, year, mode = 'monthly', page = 1, month = 1 }) => {
+  const response = await api.get('compare/', {
+    params: { lat, lon, pollutant, year, mode, page, month }
+  });
+  return response.data;
+};
+
 const locationService = {
   getDistricts,
   getTowns,
@@ -173,6 +180,8 @@ const locationService = {
   getOpenAQLatest,
   // GEE
   getGEETile,
+  // Historical Comparison
+  getComparison,
 };
 
 export default locationService;

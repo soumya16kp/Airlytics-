@@ -12,10 +12,10 @@ Run once:
 import os
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core_project.settings')
 django.setup()
 
-from accounts.models import Town
+from api_app.models import Town
 
 # Real approximate coordinates for each seeded Odisha town
 # Format: 'Town Name': (latitude, longitude)

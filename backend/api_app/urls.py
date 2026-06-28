@@ -16,9 +16,12 @@ from .views import (
     OpenAQProxyLocationsView, OpenAQProxyLatestView,
     # GEE
     GEETileView,
+    # Compare
+    CompareView,
 )
 
 urlpatterns = [
+    path('compare/',           CompareView.as_view(),             name='compare'),
     path('gee/tile/',          GEETileView.as_view(),             name='gee-tile'),
     path('openaq/locations/',  OpenAQProxyLocationsView.as_view(), name='openaq-locations'),
 

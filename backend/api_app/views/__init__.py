@@ -6,5 +6,5 @@ from .so2 import PredictSO2View, PredictSO2AtCoordsView, MapDataSO2View
 from .ai import PollutionInsightView
 from .openaq import OpenAQProxyLocationsView, OpenAQProxyLatestView
 from .gee import GEETileView
-
+from .compare import CompareView
 

@@ -28,19 +28,39 @@ class NO2Predictor:
     def _load(self):
         if self._ready or self._error:
             return
+        
+        hf_repo = os.getenv("HF_MODEL_REPO")
+        
         try:
             self._model = CatBoostRegressor()
-            self._model.load_model(MODEL_PATH)
+            actual_model_path = MODEL_PATH
+            
+            if hf_repo:
+                from huggingface_hub import hf_hub_download
+                hf_filename = os.getenv("HF_NO2_MODEL_FILENAME", "no2_optimized.cbm")
+                print(f"[NO2] Downloading model from Hugging Face: {hf_repo}/{hf_filename}")
+                actual_model_path = hf_hub_download(repo_id=hf_repo, filename=hf_filename)
+                
+            self._model.load_model(actual_model_path)
         except Exception as e:
             self._error = f"Cannot load NO2 model: {e}"
             return
+            
         try:
-            self._src       = rasterio.open(TIF_PATH)
+            actual_tif_path = TIF_PATH
+            if hf_repo:
+                from huggingface_hub import hf_hub_download
+                hf_tif_filename = os.getenv("HF_NO2_TIF_FILENAME", "NO2_2026_FullYear_12Bands.tif")
+                print(f"[NO2] Downloading TIF from Hugging Face: {hf_repo}/{hf_tif_filename}")
+                actual_tif_path = hf_hub_download(repo_id=hf_repo, filename=hf_tif_filename)
+                
+            self._src       = rasterio.open(actual_tif_path)
             self._transform = self._src.transform
             self._data      = self._src.read()   # (12, height, width)
         except Exception as e:
             self._error = f"Cannot open NO2 raster: {e}"
             return
+            
         self._ready = True
         print(f"[NO2] Model loaded. TIF {self._src.width}x{self._src.height}, "
               f"{self._src.count} bands")

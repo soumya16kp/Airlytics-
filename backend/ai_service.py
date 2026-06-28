@@ -21,8 +21,8 @@ def get_pollution_insight(pollutant_name, value, unit, status_label):
         print("[Gemini Service] WARNING: GEMINI_API_KEY not found in environment.")
         return None
 
-    # Use the correct model name for Gemini 1.5 Flash
-    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+    # Use the correct model name for Gemini Flash
+    model = genai.GenerativeModel('gemini-2.5-flash')
     
     prompt = f"""
     You are a world-class Environmental Health Scientist. 
