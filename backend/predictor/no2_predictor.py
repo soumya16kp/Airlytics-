@@ -1,38 +1,21 @@
-"""
-no2_predictor.py
-================
-Singleton that loads the XGBoost NO2 model + 12-band TIF at Django startup.
-
-The TIF contains ACTUAL monthly NO2 predictions (Band 1-12 = Jan-Dec 2026).
-For monthly (1Y) granularity: reads directly from TIF bands (instant, no model needed).
-For daily granularity (1D, 1W, 1M): runs XGBoost with day-specific doy/month inputs.
-
-XGBoost features (13):
-  lat, lon, elev, pop, urb, ntl, dow, doy, month, cld, aai, pop_ntl, loc_id
-"""
-
 import os
 import numpy as np
+import pandas as pd
 import rasterio
-import xgboost as xgb
+import math
+import datetime
+from catboost import CatBoostRegressor
 
 from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
 from grid_data_service import grid_data_service
+from no2_extractor import NO2HuggingFaceAPI
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'no2_xgboost_model.json')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'no2_optimized.cbm')
 TIF_PATH   = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'NO2_2026_FullYear_12Bands.tif')
 
-# Defaults for features not available from weather
-DEFAULT_POP = 5000
-DEFAULT_URB = 50.0
-DEFAULT_NTL = 30.0
-DEFAULT_AAI = 1.0
-DEFAULT_LOC_ID = 0
-
-
 class NO2Predictor:
-    """Loads the ML model and raster once; predicts per day on demand."""
+    """Loads the CatBoost model and raster once; predicts per day on demand."""
 
     def __init__(self):
         self._model     = None
@@ -46,7 +29,7 @@ class NO2Predictor:
         if self._ready or self._error:
             return
         try:
-            self._model = xgb.Booster()
+            self._model = CatBoostRegressor()
             self._model.load_model(MODEL_PATH)
         except Exception as e:
             self._error = f"Cannot load NO2 model: {e}"
@@ -76,28 +59,76 @@ class NO2Predictor:
 
         return pixel_vals.tolist(), None
 
-    def _predict_for_day(self, lat, lon, doy, month, elev=100.0, weather=None, pop=5000.0, overrides=None):
-        """Run XGBoost for a specific day-of-year."""
+    def _predict_for_day(self, lat, lon, doy, month, elev=100.0, weather=None, pop=5000.0, overrides=None, baseline_spatial=None, pt=None):
+        """Run CatBoost for a specific day-of-year."""
         _elev = elev
         _cld  = weather.get('cld', 20.0) if weather else 20.0
         _pop  = pop
-        _urb  = float(overrides.get('urban', DEFAULT_URB)) if overrides else DEFAULT_URB
-        _ntl  = float(overrides.get('night', DEFAULT_NTL)) if overrides else DEFAULT_NTL
-        _aai  = float(overrides.get('aai', DEFAULT_AAI)) if overrides else DEFAULT_AAI
-        _dow  = (doy % 7)
+        _temp = weather.get('temp', 28.0) if weather else 28.0
+        _temp_k = _temp + 273.15
+        
+        # Spatial baseline fallback values
+        base_ndvi = baseline_spatial.get('ndvi', 0.5) if baseline_spatial else 0.5
+        base_lights = baseline_spatial.get('lights', 0.5) if baseline_spatial else 0.5
+        base_urban = baseline_spatial.get('urban', 0) if baseline_spatial else 0
+        base_humidity = baseline_spatial.get('humidity', 50.0) if baseline_spatial else 50.0
+        
+        _ndvi = float(overrides.get('ndvi', base_ndvi)) if overrides else base_ndvi
+        _lights = float(overrides.get('lights', base_lights)) if overrides else base_lights
+        _urban = int(overrides.get('urban', base_urban)) if overrides else base_urban
+        _humidity = float(weather.get('humidity', base_humidity)) if weather else base_humidity
 
-        features = np.array([[
-            lat, lon, _elev, _pop, _urb, _ntl,
-            _dow, doy, month, _cld, _aai,
-            _pop * _ntl,   # pop_ntl interaction
-            DEFAULT_LOC_ID
-        ]], dtype=np.float64)
-
-        dmatrix = xgb.DMatrix(features, feature_names=[
-            'lat', 'lon', 'elev', 'pop', 'urb', 'ntl',
-            'dow', 'doy', 'month', 'cld', 'aai', 'pop_ntl', 'loc_id'
-        ])
-        pred = float(self._model.predict(dmatrix)[0])
+        # Derived features
+        _ws = float(weather.get('wind_speed', 3.0)) if weather else 3.0
+        _pbl = float(weather.get('pbl', 800.0)) if weather else 800.0
+        _ventilation = _ws * _pbl
+        _solar = float(weather.get('solar', 400.0)) if weather else 400.0
+        _thermal_ratio = _temp_k / max(1.0, _pbl)
+        
+        # Date features
+        _hour = pt.get('hour', 12) if pt else 12
+        
+        _weekend = 0
+        if pt and pt.get('date'):
+            try:
+                _dt = datetime.date.fromisoformat(pt['date'])
+                _weekend = 1 if _dt.weekday() >= 5 else 0
+            except Exception:
+                pass
+        
+        # Formulate all 26 features in order expected by model
+        features = {
+            'lat_r': round(lat, 4),
+            'lon_r': round(lon, 4),
+            'pbl': _pbl,
+            'temp': _temp_k,
+            'elev': _elev,
+            'pop': _pop,
+            'cld': _cld,
+            'humidity': _humidity,
+            'ndvi': _ndvi,
+            'lights': _lights,
+            'urban': _urban,
+            'ventilation': _ventilation,
+            'solar': _solar,
+            'thermal_ratio': _thermal_ratio,
+            'month': month,
+            'hour': _hour,
+            'weekend': _weekend,
+            'lights_pop': _lights * _pop,
+            'pop_pbl': _pop * _pbl,
+            'temp_pbl': _temp_k * _pbl,
+            'lights_sq': _lights ** 2,
+            'pop_sq': _pop ** 2,
+            'lights_per_pop': _lights / (_pop + 0.001),
+            'hour_sin': math.sin(2 * math.pi * _hour / 24),
+            'hour_cos': math.cos(2 * math.pi * _hour / 24),
+            'anchor': 0.0
+        }
+        
+        # Predict using CatBoost
+        df_feats = pd.DataFrame([features])[self._model.feature_names_]
+        pred = float(self._model.predict(df_feats)[0])
         return pred
 
     # ── Public API ───────────────────────────────────────────────────────────
@@ -124,17 +155,36 @@ class NO2Predictor:
         """
         Generate timeline of real predictions.
         - For monthly (1Y, 6M, 3M): use TIF bands directly (blazing fast)
-        - For daily (1D, 1W, 1M): run XGBoost per day
+        - For daily (1D, 1W, 1M): run CatBoost per day
         """
         points = generate_timeline_points(range_str)
         
-        # Get baseline from spatial grid
+        # Get baseline from Hugging Face dataset
+        baseline_spatial = {}
+        api = NO2HuggingFaceAPI()
+        try:
+            df_baseline = api.get_data_for_coordinate(lat, lon)
+            if not df_baseline.empty:
+                row = df_baseline.iloc[0]
+                baseline_spatial['pop'] = float(row.get('pop', 0.8))
+                baseline_spatial['elev'] = float(row.get('elev', 50.0))
+                baseline_spatial['ndvi'] = float(row.get('ndvi', 0.5))
+                baseline_spatial['lights'] = float(row.get('lights', 0.5))
+                baseline_spatial['urban'] = int(row.get('urban', 0))
+                baseline_spatial['humidity'] = float(row.get('humidity', 50.0))
+        except Exception as e:
+            print(f"[NO2] Hugging Face baseline retrieval failed: {e}")
+        finally:
+            api.close()
+
+        # Fallback to local grid service if Hugging Face was empty or failed
         grid_pop, grid_elev = grid_data_service.get_data_at(lat, lon)
         
-        elev = grid_elev
+        elev = baseline_spatial.get('elev', grid_elev)
         if overrides and 'elev' in overrides: elev = float(overrides['elev'])
         
-        pop = float(overrides.get('pop', grid_pop)) if overrides else grid_pop
+        pop = baseline_spatial.get('pop', (grid_pop / 5000.0 if grid_pop > 10 else grid_pop))
+        if overrides and 'pop' in overrides: pop = float(overrides['pop'])
 
         # Try to get TIF monthly data for fast monthly lookups
         tif_monthly, _ = self._get_tif_monthly(lat, lon)
@@ -150,7 +200,7 @@ class NO2Predictor:
                 # Use TIF band directly (index 0-11 for months 1-12)
                 value = tif_monthly[month - 1]
             else:
-                # Run XGBoost for this specific day
+                # Run CatBoost for this specific day
                 hour = pt.get('hour')
                 weather = get_weather_for_day(lat, lon, doy, hour=hour)
                 
@@ -159,7 +209,7 @@ class NO2Predictor:
                     for k in ['temp', 'cld', 'wind_speed', 'wind_dir']:
                         if k in overrides: weather[k] = float(overrides[k])
                 
-                value = self._predict_for_day(lat, lon, doy, month, elev, weather, pop=pop, overrides=overrides)
+                value = self._predict_for_day(lat, lon, doy, month, elev, weather, pop=pop, overrides=overrides, baseline_spatial=baseline_spatial, pt=pt)
 
             timeline.append({
                 'year':          pt['year'],
@@ -183,11 +233,9 @@ class NO2Predictor:
             'error':           None,
         }
 
-
 def _month_name(m):
     return ['Jan','Feb','Mar','Apr','May','Jun',
             'Jul','Aug','Sep','Oct','Nov','Dec'][m - 1]
-
 
 # Module-level singleton
 no2_predictor = NO2Predictor()
