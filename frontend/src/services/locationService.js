@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const normalizeApiUrl = (url) => (url.endsWith('/') ? url : `${url}/`);
-const API_URL = normalizeApiUrl(process.env.REACT_APP_API_URL || 'http://localhost:8000/api');
+const API_URL = normalizeApiUrl('https://obituchiha91-airlytics-backend.hf.space/api');
 
 const api = axios.create({
   baseURL: API_URL,
