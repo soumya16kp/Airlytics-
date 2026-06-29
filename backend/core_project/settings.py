@@ -95,11 +95,14 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS', 'http://localhost:3000')
-CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
+CORS_ALLOWED_ORIGINS = [
+    "https://airlytics-omega.vercel.app",
+    "http://localhost:3000",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://airlytics-omega.vercel.app",
+    "https://*.hf.space",
+]
 
 ALLOWED_HOSTS = ['*']
-
-CSRF_TRUSTED_ORIGINS = ['https://*.hf.space']
-
-CORS_ALLOW_ALL_ORIGINS = True
