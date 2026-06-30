@@ -7,7 +7,7 @@ class NO2HuggingFaceAPI:
         """
         Initializes the connection to Hugging Face using DuckDB.
         """
-        self.base_path = "hf://datasets/ObitUchiha91/no2_data_yearly"
+        self.base_path = "hf://datasets/ObitUchiha91/Airlytics_data_set/NO2"
         
         # Initialize DuckDB connection
         self.con = duckdb.connect()
@@ -29,7 +29,7 @@ class NO2HuggingFaceAPI:
             except Exception as e:
                 print(f"[NO2Extractor] Failed to create Hugging Face secret: {e}")
         else:
-            print("[NO2Extractor] No HF_TOKEN provided. This will only work if the dataset is public.")
+            print("[NO2Extractor] No HF_TOKEN provided. Dataset is public, so DuckDB should still work.")
 
     def get_by_state_and_year(self, state_name, year):
         """
@@ -38,10 +38,9 @@ class NO2HuggingFaceAPI:
         """
         print(f"Fetching data for {state_name} in {year}...")
         
-        # Points directly to the specific parquet file in the folder structure
+        # Uses union_by_name to handle minor schema drift in public datasets
         file_path = f"{self.base_path}/{year}/{state_name}.parquet"
-        
-        query = f"SELECT * FROM '{file_path}'"
+        query = f"SELECT * FROM read_parquet('{file_path}', union_by_name=true)"
         
         return self.con.execute(query).df()
 
@@ -55,11 +54,11 @@ class NO2HuggingFaceAPI:
         if 17.0 <= min_lat <= 23.5 and 81.0 <= min_lon <= 88.0:
             file_path = f"{self.base_path}/{year}/*Orissa*.parquet"
         else:
-            file_path = f"{self.base_path}/{year}/*.parquet"
+            file_path = f"{self.base_path}/{year}/**/*.parquet"
             
         query = f"""
             SELECT * 
-            FROM '{file_path}'
+            FROM read_parquet('{file_path}', union_by_name=true)
             WHERE lat BETWEEN {min_lat} AND {max_lat}
               AND lon BETWEEN {min_lon} AND {max_lon}
         """
@@ -98,9 +97,11 @@ class NO2HuggingFaceAPI:
                 tolerance = 0.05
                 df = self.get_by_bounding_box(lat - tolerance, lat + tolerance, lon - tolerance, lon + tolerance, year)
                 if df.empty:
+                    print(f"[NO2Extractor] Tight bbox empty, widening to 0.2 for ({lat}, {lon})")
                     df = self.get_by_bounding_box(lat - 0.2, lat + 0.2, lon - 0.2, lon + 0.2, year)
                 
                 if not df.empty:
+                    print(f"[NO2Extractor] HF data: {len(df)} rows, columns: {list(df.columns)}")
                     lat_col = 'latitude' if 'latitude' in df.columns else 'lat'
                     lon_col = 'longitude' if 'longitude' in df.columns else 'lon'
                     
@@ -108,10 +109,13 @@ class NO2HuggingFaceAPI:
                     min_dist = df['dist'].min()
                     closest_coords = df[df['dist'] == min_dist]
                     closest_coords = closest_coords.drop(columns=['dist'])
-                    print(f"[NO2Extractor] Loaded closest coordinates from Hugging Face for ({lat}, {lon})")
+                    print(f"[NO2Extractor] ✅ SOURCE=HuggingFace for ({lat}, {lon}), "
+                          f"closest={len(closest_coords)} rows, dist={min_dist:.6f}")
                     return closest_coords
+                else:
+                    print(f"[NO2Extractor] ⚠ HF returned empty for ({lat}, {lon}), year={year}")
             except Exception as e:
-                print(f"[NO2Extractor] Hugging Face query failed: {e}. Falling back to local CSV.")
+                print(f"[NO2Extractor] ❌ Hugging Face query failed: {e}. Falling back to local CSV.")
 
         # Fallback: Query local CSV files in `no2_weather_data/`
         try:

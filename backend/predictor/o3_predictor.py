@@ -41,15 +41,26 @@ class O3Predictor:
         if self._ready or self._error:
             return
         try:
-            bundle = joblib.load(MODEL_PATH)
+            # Try HuggingFace first, then fall back to local
+            hf_token = os.environ.get("HF_TOKEN", None)
+            try:
+                from huggingface_hub import hf_hub_download
+                o3_model_path = hf_hub_download(
+                    repo_id="ObitUchiha91/airlytics-models",
+                    filename="o3_model_new.pkl",
+                    token=hf_token
+                )
+                print("[O3] Model downloaded from Hugging Face.")
+            except Exception as hf_err:
+                print(f"[O3] HF download failed ({hf_err}), using local model.")
+                o3_model_path = MODEL_PATH
+            bundle = joblib.load(o3_model_path)
             self._models = {
-                'lgbm': bundle['m1_lgbm'],
-                'xgb':  bundle['m2_xgb'],
-                'cat':  bundle['m3_cat'],
+                'xgb':  bundle.get('xgboost'),
+                'cat':  bundle.get('catboost'),
             }
-            self._scaler  = bundle['scaler']
-            self._kmeans  = bundle['kmeans']
-            self._features = bundle['features']
+            self._kmeans  = bundle.get('kmeans')
+            self._features = bundle.get('features')
             self._ready = True
             print(f"[O3] Model loaded: {bundle.get('version', 'unknown')}")
         except Exception as e:
@@ -60,10 +71,7 @@ class O3Predictor:
         """Build the 15-feature vector for one prediction."""
         import warnings
         w = weather
-        coords_df = pd.DataFrame([[lat, lon]], columns=['lat', 'lon'])
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
-            cluster = int(self._kmeans.predict(coords_df)[0])
+
 
         _elev  = elev if elev is not None else 100.0
         _pop   = pop if pop is not None else DEFAULT_POP
@@ -76,50 +84,48 @@ class O3Predictor:
         _ws    = float(w.get('wind_speed', 3.0))
 
         # Derived features
+        import math
         photo_index = _solar * (1.0 - _cld / 100.0)
-        ozone_trap  = _temp_k / (_ws + 0.1)
-        o3_lag      = DEFAULT_O3_LAG
+        _humidity = float(w.get('humidity', _cld))
+        uv_energy_sq = photo_index ** 2
+        inversion_idx = _temp_k / (_pbl + 1.0)
+        emission_sun_interaction = _pop * _solar
+        ventilation = _pbl * _ws
+        hist_norm = DEFAULT_O3_LAG
+        
+        # We need hour if provided, else use midday (12)
+        hour_val = w.get('hour', 12)
+        if hour_val is None: hour_val = 12
+        hour_sin = math.sin(2 * math.pi * hour_val / 24.0)
+        hour_cos = math.cos(2 * math.pi * hour_val / 24.0)
 
-        # Feature vector as DataFrame
-        # Ensure lat/lon are rounded to match 0.1 degree grid training
         df = pd.DataFrame([[
-            round(lat, 1), round(lon, 1), cluster, _pbl, _temp_k, _solar, _elev, _pop, _cld,
-            day_sin(doy), day_cos(doy), _ws, photo_index, ozone_trap, o3_lag
+            round(lat, 1), round(lon, 1), _pbl, _temp_k, _solar, _elev, _pop, _humidity, _ws,
+            uv_energy_sq, inversion_idx, emission_sun_interaction, 
+            day_sin(doy), day_cos(doy), hour_sin, hour_cos, ventilation, hist_norm
         ]], columns=self._features)
 
         return df
 
     def _predict_single(self, raw_features):
-        """Run all 3 sub-models and average."""
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            scaled_arr = self._scaler.transform(raw_features)
-        
-        # Convert back to DataFrame with feature names so LGBM/XGB don't warn
-        scaled = pd.DataFrame(scaled_arr, columns=self._features)
-
+        """Run sub-models and average."""
         preds = []
-        # LightGBM
-        try:
-            p = float(self._models['lgbm'].predict(scaled)[0])
-            preds.append(p)
-        except Exception as e:
-            print(f"[O3] LightGBM failed: {e}")
 
         # XGBoost
-        try:
-            p = float(self._models['xgb'].predict(scaled)[0])
-            preds.append(p)
-        except Exception as e:
-            print(f"[O3] XGBoost failed: {e}")
+        if self._models.get('xgb'):
+            try:
+                p = float(self._models['xgb'].predict(raw_features)[0])
+                preds.append(p)
+            except Exception as e:
+                print(f"[O3] XGBoost failed: {e}")
 
         # CatBoost
-        try:
-            p = float(self._models['cat'].predict(scaled)[0])
-            preds.append(p)
-        except Exception as e:
-            print(f"[O3] CatBoost failed: {e}")
+        if self._models.get('cat'):
+            try:
+                p = float(self._models['cat'].predict(raw_features)[0])
+                preds.append(p)
+            except Exception as e:
+                print(f"[O3] CatBoost failed: {e}")
 
         if not preds:
             return None
@@ -178,6 +184,9 @@ class O3Predictor:
             if overrides:
                 for k in ['temp', 'cld', 'wind_speed', 'solar', 'pbl']:
                     if k in overrides: weather[k] = float(overrides[k])
+            
+            # pass hour to _build_features
+            weather['hour'] = hour
 
             raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop)
             value = self._predict_single(raw)

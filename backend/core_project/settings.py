@@ -1,4 +1,5 @@
 import os
+import dj_database_url
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
@@ -60,11 +61,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core_project.wsgi.application'
+# This will use the cloud database if the DATABASE_URL environment variable exists,
+# otherwise, it will use your local SQLite database for local testing.
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL', 'sqlite:///db.sqlite3'),
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
 }
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -98,11 +102,12 @@ SIMPLE_JWT = {
 CORS_ALLOWED_ORIGINS = [
     "https://airlytics-omega.vercel.app",
     "http://localhost:3000",
+    "https://huggingface.co",
+    "https://obituchiha91-airlytics-backend.hf.space",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "https://airlytics-omega.vercel.app",
     "https://*.hf.space",
-]
-
-ALLOWED_HOSTS = ['*']
+    "https://huggingface.co",
+]

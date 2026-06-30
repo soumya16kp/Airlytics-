@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate, NavLink } from 'react-router-dom';
 import { logout, reset } from '../store/authSlice';
@@ -16,6 +16,9 @@ import {
 import RegionalMap from './RegionalMap';
 import GroundData from './GroundData';
 import HistoricalCompareGraph from './HistoricalCompareGraph';
+import FreshnessCounter from './FreshnessCounter';
+import AiReport from './AiReport';
+import FollowUpChat from './FollowUpChat';
 
 // Pollutant display config
 const POLLUTANT_LABELS = {
@@ -141,7 +144,36 @@ const Dashboard = ({ pollutantType = 'co' }) => {
   const [simLoading, setSimLoading] = useState(false);
   const [simError, setSimError] = useState(null);
   
+  const [aiAnalysisRequested, setAiAnalysisRequested] = useState(false);
+  const [aiInsightError, setAiInsightError] = useState(false);
+
+  const abortControllerRef = useRef(null);
+  const mapClickTimeoutRef = useRef(null);
+
+  
   const WHO_SAFE_LIMIT = pollutant.whoLimit;
+
+  const handleManualAiTrigger = async () => {
+    if (!predData?.base_value_2026) return;
+    setAiAnalysisRequested(true);
+    setIsAiLoading(true);
+    setAiInsightError(false);
+
+    try {
+      const response = await locationService.getPollutionInsight(
+        pollutant.name,
+        predData.base_value_2026,
+        pollutant.unit,
+        getStatus(predData.base_value_2026)?.label || 'Unknown'
+      );
+      setAiInsight(response.insight);
+    } catch (error) {
+      console.error("AI Insight failed", error);
+      setAiInsightError(true);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
 
   const getStatus = useCallback((val, limit = WHO_SAFE_LIMIT) => {
     if (!val || !limit) return null;
@@ -239,9 +271,9 @@ const Dashboard = ({ pollutantType = 'co' }) => {
       const processed = processPollutantData(data);
       setSelectedCoords(null);
       setPredData(processed);
+      setSyncedAt(Date.now());
       
       const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
-      fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
     } catch (e) {
       setError(e.response?.data?.error || `Failed to load ${pollutant.name} data`);
     } finally {
@@ -259,9 +291,9 @@ const Dashboard = ({ pollutantType = 'co' }) => {
       const processed = processPollutantData(data);
       setSelectedCoords({ lat, lon });
       setPredData(processed);
+      setSyncedAt(Date.now());
 
       const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
-      fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
     } catch (e) {
       setError(e.response?.data?.error || `Prediction failed for ${pollutant.name}`);
     } finally {
@@ -351,7 +383,6 @@ const Dashboard = ({ pollutantType = 'co' }) => {
           setSimData(processed);
 
           const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
-          fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
         }
       } catch (e) {
         console.error("Simulation failed", e);
@@ -419,9 +450,9 @@ const Dashboard = ({ pollutantType = 'co' }) => {
       setSelectedCoords({ lat, lon });
       setPredData(processed);
       setSyncedAt(Date.now());
+      setSyncedAt(Date.now());
 
       const status = getStatus(processed.base_value_2026, pollutant.whoLimit);
-      fetchAiInsight(pollutant.name, processed.base_value_2026, pollutant.unit, status?.label);
       setLoading(false);
     } else {
       fetchAtCoords(lat, lon, timeRange);
@@ -894,51 +925,66 @@ const Dashboard = ({ pollutantType = 'co' }) => {
                 <div style={{ marginTop: '32px', padding: '32px', background: 'rgba(99, 102, 241, 0.05)', borderRadius: '32px', border: '1px solid rgba(99, 102, 241, 0.15)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
                     <h4 style={{ margin: 0 }}>Gemini AI Deep Analysis</h4>
-                    <button onClick={() => fetchAiInsight(pollutant.name, currentValue, pollutant.unit, whoStatus?.label)} disabled={isAiLoading} className="btn-refetch">
-                      <RefreshCw size={14} className={isAiLoading ? 'spin' : ''} /> Refetch Analysis
-                    </button>
+                    {aiAnalysisRequested && !isAiLoading && !aiInsightError && aiInsight && (
+                      <button onClick={handleManualAiTrigger} className="btn-refresh">
+                        <RefreshCw size={14} /> Refresh Analysis
+                      </button>
+                    )}
                   </div>
-                  {isAiLoading ? (
-                    <div className="dot-typing" style={{ margin: '40px auto' }}></div>
-                  ) : aiInsight && typeof aiInsight === 'object' ? (
-                    <div className="ai-insight-grid">
-                      <div className="ai-insight-item">
-                        <strong>Short-term Effects</strong>
-                        <p>{String(aiInsight.short_term_effects || 'No data')}</p>
-                      </div>
-                      <div className="ai-insight-item">
-                        <strong>Long-term Risks</strong>
-                        <p>{String(aiInsight.long_term_effects || 'No data')}</p>
-                      </div>
-                      <div className="ai-insight-item">
-                        <strong>Vulnerable Groups</strong>
-                        <p>{String(aiInsight.vulnerable_groups || 'No data')}</p>
-                      </div>
-                      <div className="ai-insight-item">
-                        <strong>Environmental Impact</strong>
-                        <p>{String(aiInsight.environmental_impact || 'No data')}</p>
-                      </div>
-                      <div className="ai-insight-item full-width" style={{ gridColumn: 'span 2' }}>
-                        <strong>Personalized Action Plan</strong>
-                        <ul className="ai-action-list">
-                          {Array.isArray(aiInsight.action_plan) ? aiInsight.action_plan.map((step, i) => (
-                            <li key={i} className="ai-action-item">
-                              <div className="ai-action-dot"></div>
-                              {String(step)}
-                            </li>
-                          )) : <li>{String(aiInsight.action_plan || 'No specific actions')}</li>}
-                        </ul>
-                      </div>
-                      <div className="ai-insight-item scientific">
-                        <strong>Scientific Fact</strong>
-                        <p style={{ fontStyle: 'italic', opacity: 0.9 }}>{String(aiInsight.scientific_fact || 'No data')}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '15px', color: '#334155', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-                      {aiInsight || "Analyzing atmospheric chemistry for personalized recommendations..."}
-                    </div>
-                  )}
+          {!aiAnalysisRequested ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
+                Generate a comprehensive breakdown of health impacts, safe limits, and recommended precautions based on {pollutant.full} levels at this location.
+              </p>
+              <button 
+                onClick={handleManualAiTrigger} 
+                className="btn-analyze"
+                disabled={loading || simLoading || !predData?.base_value_2026}
+              >
+                🔬 Analyze Air Quality
+              </button>
+            </div>
+          ) : isAiLoading ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <button className="btn-analyze" disabled>
+                ⏳ Analyzing with Gemini AI…
+              </button>
+              <div style={{ marginTop: '32px', textAlign: 'left' }}>
+                <div className="ai-skeleton-line" style={{ width: '40%' }}></div>
+                <div className="ai-skeleton-line" style={{ width: '100%' }}></div>
+                <div className="ai-skeleton-line" style={{ width: '85%' }}></div>
+                <div className="ai-skeleton-line" style={{ width: '60%' }}></div>
+              </div>
+            </div>
+          ) : aiInsightError ? (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <p style={{ color: 'var(--error)', marginBottom: '16px' }}>⚠ Analysis unavailable. Please try again.</p>
+              <button 
+                onClick={handleManualAiTrigger} 
+                className="btn-analyze" 
+                style={{ background: 'var(--warning)', boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.35)' }}
+              >
+                🔄 Try Again
+              </button>
+            </div>
+          ) : (
+            <>
+              <AiReport 
+                aiInsight={aiInsight} 
+                currentValue={predData?.base_value_2026} 
+                whoStatus={getStatus(predData?.base_value_2026)} 
+                whoLimit={pollutant.whoLimit}
+                pollutantType={pollutant.name} 
+              />
+              {aiInsight && (
+                <FollowUpChat 
+                  pollutantType={pollutant.name} 
+                  currentValue={predData?.base_value_2026} 
+                  statusLabel={getStatus(predData?.base_value_2026)?.label} 
+                />
+              )}
+            </>
+          )}
                 </div>
               </div>
             </div>

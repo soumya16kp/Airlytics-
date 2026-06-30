@@ -46,10 +46,15 @@ function MapViewportSync({ center, zoom }) {
     return null;
 }
 
-// Listens for map click to move the dragger
-function MapClickHandler({ onMapClick }) {
+// Listens for map click to move the dragger — with deduplication
+function MapClickHandler({ onMapClick, isPredicting }) {
+    const lastClick = useRef(null);
     useMapEvents({
         click(e) {
+            if (isPredicting) return;
+            // Deduplicate clicks within 100 meters
+            if (lastClick.current && e.latlng.distanceTo(lastClick.current) < 100) return;
+            lastClick.current = e.latlng;
             onMapClick(e.latlng);
         },
     });
@@ -392,7 +397,7 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
                 />
                 <InitialView center={center} hasInitialized={mapInitialized} />
                 <MapViewportSync center={center} zoom={mapZoom} />
-                <MapClickHandler onMapClick={onMapClick} />
+                <MapClickHandler onMapClick={onMapClick} isPredicting={dragLoading} />
 
                 {/* Active Synced Location Circle (intensity overlay) */}
                 {townCoords && (
@@ -502,4 +507,11 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
     );
 };
 
-export default RegionalMap;
+export default React.memo(RegionalMap, (prevProps, nextProps) => {
+    return (
+        prevProps.townCoords?.[0] === nextProps.townCoords?.[0] &&
+        prevProps.townCoords?.[1] === nextProps.townCoords?.[1] &&
+        prevProps.pollutantType === nextProps.pollutantType &&
+        prevProps.currentCOValue === nextProps.currentCOValue
+    );
+});

@@ -29,17 +29,22 @@ class NO2Predictor:
         if self._ready or self._error:
             return
         
-        hf_repo = os.getenv("HF_MODEL_REPO")
+        hf_token = os.environ.get("HF_TOKEN", None)
         
         try:
             self._model = CatBoostRegressor()
-            actual_model_path = MODEL_PATH
-            
-            if hf_repo:
+            # Try HuggingFace first, then fall back to local
+            try:
                 from huggingface_hub import hf_hub_download
-                hf_filename = os.getenv("HF_NO2_MODEL_FILENAME", "no2_optimized.cbm")
-                print(f"[NO2] Downloading model from Hugging Face: {hf_repo}/{hf_filename}")
-                actual_model_path = hf_hub_download(repo_id=hf_repo, filename=hf_filename)
+                actual_model_path = hf_hub_download(
+                    repo_id="ObitUchiha91/airlytics-models",
+                    filename="no2_optimized.cbm",
+                    token=hf_token
+                )
+                print("[NO2] Model downloaded from Hugging Face.")
+            except Exception as hf_err:
+                print(f"[NO2] HF download failed ({hf_err}), using local model.")
+                actual_model_path = MODEL_PATH
                 
             self._model.load_model(actual_model_path)
         except Exception as e:
@@ -47,26 +52,31 @@ class NO2Predictor:
             return
             
         try:
-            actual_tif_path = TIF_PATH
-            if hf_repo:
-                from huggingface_hub import hf_hub_download
-                hf_tif_filename = os.getenv("HF_NO2_TIF_FILENAME", "NO2_2026_FullYear_12Bands.tif")
-                print(f"[NO2] Downloading TIF from Hugging Face: {hf_repo}/{hf_tif_filename}")
-                actual_tif_path = hf_hub_download(repo_id=hf_repo, filename=hf_tif_filename)
-                
-            self._src       = rasterio.open(actual_tif_path)
-            self._transform = self._src.transform
-            self._data      = self._src.read()   # (12, height, width)
+            # TIF is optional — NO2 can predict without it using CatBoost directly
+            if os.path.exists(TIF_PATH):
+                self._src       = rasterio.open(TIF_PATH)
+                self._transform = self._src.transform
+                self._data      = self._src.read()   # (12, height, width)
+                print(f"[NO2] TIF loaded: {self._src.width}x{self._src.height}, "
+                      f"{self._src.count} bands")
+            else:
+                print("[NO2] TIF not found — will use CatBoost predictions for all ranges.")
+                self._src = None
+                self._data = None
+                self._transform = None
         except Exception as e:
-            self._error = f"Cannot open NO2 raster: {e}"
-            return
+            print(f"[NO2] TIF load failed ({e}) — will use CatBoost for all ranges.")
+            self._src = None
+            self._data = None
+            self._transform = None
             
         self._ready = True
-        print(f"[NO2] Model loaded. TIF {self._src.width}x{self._src.height}, "
-              f"{self._src.count} bands")
+        print(f"[NO2] Model loaded successfully.")
 
     def _get_tif_monthly(self, lat, lon):
         """Read all 12 monthly values directly from TIF. Returns (values, error)."""
+        if self._src is None or self._data is None:
+            return None, "TIF not loaded — using CatBoost instead."
         col, row = ~self._transform * (lon, lat)
         col, row = int(round(col)), int(round(row))
 

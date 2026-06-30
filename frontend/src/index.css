@@ -1103,3 +1103,386 @@ tr:hover td { background: #f1f5f9; }
   color: var(--text-muted);
   font-weight: 600;
 }
+
+
+/* AI SPEC GENERATED STYLES */
+ & Override Leaflet Styles */
+.leaflet-popup-content-wrapper {
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-lg) !important;
+  font-family: 'Outfit', sans-serif !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 16px !important;
+  font-size: 14px !important;
+}
+
+.leaflet-popup-tip-container {
+  display: none !important; /* Remove the arrow tip */
+}
+
+/* Feature 4: Circle color transitions */
+.leaflet-interactive.pollution-circle {
+  transition: fill 0.4s ease, stroke 0.4s ease;
+}
+
+/* Feature 4: Dashed loading animation for Probe Circle */
+@keyframes dashMarch {
+  to { stroke-dashoffset: -24; }
+}
+.probe-circle-loading {
+  animation: dashMarch 0.6s linear infinite;
+  stroke-dasharray: 8 4 !important;
+}
+
+/* Feature 4: Pulse animation for loading/hover */
+@keyframes pulseCircle {
+  0% { opacity: 0.2; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.02); }
+  100% { opacity: 0.2; transform: scale(1); }
+}
+.circle-pulse {
+  animation: pulseCircle 1.5s ease-in-out infinite;
+}
+
+/* Feature 2: GPS Badge Transitions */
+.gps-badge {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 1001;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-md);
+  transition: opacity 0.5s ease, visibility 0.5s;
+}
+.gps-badge.fade-out {
+  opacity: 0;
+  visibility: hidden;
+}
+ Animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.ai-section-enter {
+  animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.ai-hero-enter {
+  animation: scaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* AI Report Container & Dividers */
+.ai-report-container {
+  border-radius: 28px;
+  padding: 40px;
+  background: rgba(99, 102, 241, 0.03);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  box-shadow: var(--shadow-md);
+  font-family: 'Outfit', sans-serif;
+}
+
+.ai-section {
+  margin-bottom: 32px;
+  padding-top: 32px;
+  border-top: 1px solid var(--border-subtle);
+}
+.ai-section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+/* Feature 6: Analyze Button Styles */
+.btn-analyze {
+  width: 100%;
+  min-width: 280px;
+  height: 56px;
+  background: linear-gradient(135deg, var(--primary), #4338ca);
+  color: white;
+  font-size: 17px;
+  font-weight: 800;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.btn-analyze:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 15px 30px -5px rgba(99, 102, 241, 0.5);
+}
+.btn-analyze:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-analyze:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.btn-refresh {
+  background: transparent;
+  color: var(--primary);
+  border: 2px solid var(--primary);
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-refresh:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
+/* AI Skeletons */
+@keyframes skeletonPulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+.ai-skeleton-line {
+  height: 12px;
+  background: #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  animation: skeletonPulse 1.5s infinite ease-in-out;
+}
+ Layout Enhancements */
+h1 {
+  font-size: clamp(24px, 4vw, 42px);
+  margin-bottom: 8px;
+  line-height: 1.2;
+}
+
+.chart-card {
+  padding: 36px;
+  background: var(--card-bg);
+  border-radius: 24px;
+  box-shadow: var(--shadow-sm);
+}
+.chart-card.full, .chart-card.wide {
+  padding: 40px;
+}
+
+.dashboard-grid {
+  display: grid;
+  gap: 28px; /* Tighter gap */
+}
+
+/* Feature 9.2: Weather Cards Grid */
+.weather-ingredients {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 40px;
+}
+@media (max-width: 900px) {
+  .weather-ingredients { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .weather-ingredients { grid-template-columns: 1fr; }
+}
+.weather-card {
+  padding: 16px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid var(--border-subtle);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.weather-card:hover {
+  box-shadow: 0 0 0 2px var(--primary-glow);
+  transform: translateY(-2px);
+}
+.weather-value { font-size: 16px; font-weight: 700; }
+.weather-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+
+/* Feature 9.4: Simulation Accordion */
+.accordion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding-bottom: 12px;
+}
+.accordion-body {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+.accordion-open {
+  max-height: 2000px;
+  opacity: 1;
+}
+.chevron-icon {
+  transition: transform 0.3s ease;
+}
+.accordion-open .chevron-icon {
+  transform: rotate(180deg);
+}
+.simulating-active {
+  border-top: 3px solid var(--warning);
+}
+
+/* Feature 9.5: Responsive Map Card */
+.map-container-wrapper {
+  height: clamp(320px, 50vh, 700px);
+  width: 100%;
+  border-radius: 24px;
+  overflow: hidden;
+}
+@media (max-width: 768px) {
+  .map-container-wrapper {
+    border-radius: 0;
+    margin-left: -24px; /* Pull out of padding */
+    width: calc(100% + 48px);
+  }
+}
+
+/* Feature 9.8: Mobile Navigation */
+@media (max-width: 900px) {
+  .pollutant-tab span { display: none; } /* Hide labels, show icons */
+}
+@media (max-width: 640px) {
+  .dashboard-nav {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px 24px;
+    gap: 8px;
+  }
+  .pollutant-tabs {
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none; /* Firefox */
+    padding: 4px 0;
+    display: flex;
+    gap: 8px;
+  }
+  .pollutant-tabs::-webkit-scrollbar { display: none; } /* Chrome */
+  .current-loc {
+    max-width: 160px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Feature 8: Follow-up Questions Chat UI */
+.follow-up-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-subtle);
+}
+.follow-up-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.follow-up-chip {
+  background: #f1f5f9;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border-subtle);
+  border-radius: 100px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+.follow-up-chip:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.follow-up-input-wrap {
+  position: relative;
+  width: 100%;
+}
+.follow-up-input {
+  width: 100%;
+  padding: 14px 52px 14px 18px;
+  border-radius: 16px;
+  border: 2px solid var(--border-subtle);
+  font-size: 15px;
+  font-family: 'Outfit', sans-serif;
+  outline: none;
+  transition: all 0.2s ease;
+}
+.follow-up-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-glow);
+}
+.follow-up-input.error {
+  border-color: var(--error);
+}
+
+.btn-send-chat {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--primary);
+  color: white;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-send-chat:hover:not(:disabled) { background: #4338ca; transform: translateY(-50%) scale(1.05); }
+.btn-send-chat:disabled { background: #cbd5e1; cursor: not-allowed; }
+
+.ai-chat-history {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ai-answer-box {
+  background: rgba(99, 102, 241, 0.04);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+  border-left: 3px solid var(--primary);
+  border-radius: 16px;
+  padding: 20px 24px;
+  animation: fadeInUp 0.4s ease;
+}
+
+/* Feature 9.11: Skeletons */
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e8edf4 50%, #f1f5f9 75%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}

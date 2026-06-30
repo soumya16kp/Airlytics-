@@ -11,12 +11,13 @@ class PollutionInsightView(APIView):
         pollutant = request.query_params.get('pollutant')
         value = request.query_params.get('value')
         unit = request.query_params.get('unit')
-        status = request.query_params.get('status')
+        status_label = request.query_params.get('status')
+        question = request.query_params.get('question')
 
-        if not all([pollutant, value, unit, status]):
+        if not all([pollutant, value, unit, status_label]):
             return Response({'error': 'Missing required parameters.'}, status=400)
 
-        insight = get_pollution_insight(pollutant, value, unit, status)
+        insight = get_pollution_insight(pollutant, value, unit, status_label, question)
         
         if not insight:
             return Response({

@@ -24,12 +24,6 @@ try:
 except ImportError:
     ee = None
 
-try:
-    from api_app.views.gee import initialize_ee
-    initialize_ee()
-except Exception as e:
-    print(f"[CompareService] Failed to initialize Earth Engine: {e}")
-
 # ─── Config ─────────────────────────────────────────────────────────────────
 
 GEE_COLLECTIONS = {
@@ -218,11 +212,18 @@ def get_gee_monthly(lat, lon, pollutant, year):
             df = api.get_data_for_coordinate(lat, lon, year)
             if not df.empty:
                 import pandas as pd
+                print(f"[CompareService DEBUG] NO2 HF data columns: {list(df.columns)}")
+                print(f"[CompareService DEBUG] NO2 HF data sample row: {df.iloc[0].to_dict()}")
                 df['parsed_date'] = pd.to_datetime(df['date'] if 'date' in df.columns else df['parsed_date'])
                 df['month'] = df['parsed_date'].dt.month
                 no2_col = 'no2_level' if 'no2_level' in df.columns else 'no2'
+                print(f"[CompareService DEBUG] Using NO2 column: '{no2_col}', "
+                      f"sample value: {df[no2_col].iloc[0]}, mean: {df[no2_col].mean():.10f}")
                 monthly_avg = df.groupby('month')[no2_col].mean().to_dict()
+                print(f"[CompareService DEBUG] NO2 HF monthly avg (source=HuggingFace): {monthly_avg}")
                 return {m: monthly_avg.get(m, None) for m in range(1, 13)}
+            else:
+                print(f"[CompareService DEBUG] NO2 HF returned empty DataFrame, falling back to GEE.")
         except Exception as e:
             print(f"[CompareService] NO2 Hugging Face monthly extraction failed: {e}")
         finally:
@@ -398,10 +399,20 @@ def get_comparison_data(lat, lon, pollutant, year_str, mode='monthly', page=1, m
         gee_raw = get_gee_monthly(lat, lon, pollutant, year) if fetch_gee else {m: None for m in range(1, 13)}
         ml_map  = get_ml_monthly(lat, lon, pollutant, year)
 
+        # Debug: log raw values for first available month
+        for dbg_m in range(1, 13):
+            if gee_raw.get(dbg_m) is not None and ml_map.get(dbg_m) is not None:
+                print(f"[CompareService DEBUG] {pollutant} month={dbg_m}: "
+                      f"GEE_raw={gee_raw[dbg_m]:.10f}, ML_raw={ml_map[dbg_m]:.10f}, "
+                      f"ratio={gee_raw[dbg_m]/ml_map[dbg_m]:.4f}")
+                break
+
         for m in range(1, 13):
             raw      = gee_raw.get(m)
             gee_val  = convert_gee_value(raw, pollutant) if raw is not None else None
             ml_raw   = ml_map.get(m)
+            # ML predictions are in the same raw unit as GEE satellite data
+            # (both use mol/m² for Sentinel-5P bands), so apply same conversion
             ml_val   = convert_gee_value(ml_raw, pollutant) if ml_raw is not None else None
             response_data.append({
                 'label':         f"{MONTH_NAMES[m-1]} {year}",

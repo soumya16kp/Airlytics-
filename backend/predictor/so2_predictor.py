@@ -51,7 +51,10 @@ class SO2Predictor:
         if self._ready or self._error:
             return
         try:
-            bundle = joblib.load(MODEL_PATH)
+            from huggingface_hub import hf_hub_download
+            hf_token = os.environ.get("HF_TOKEN", None)
+            so2_model_path = hf_hub_download(repo_id="ObitUchiha91/airlytics-models", filename="OdishaSO2Model.pkl", token=hf_token)
+            bundle = joblib.load(so2_model_path)
             # Exact keys from the model bundle
             self._lgbm          = bundle['lgbm']
             self._cat           = bundle['cat']

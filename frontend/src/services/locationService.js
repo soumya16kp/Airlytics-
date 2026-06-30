@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const normalizeApiUrl = (url) => (url.endsWith('/') ? url : `${url}/`);
-const API_URL = normalizeApiUrl('https://obituchiha91-airlytics-backend.hf.space/api');
+// Use local backend by default for development, unless overridden by env variable
+const API_URL = normalizeApiUrl(process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api');
 
 const api = axios.create({
   baseURL: API_URL,
@@ -61,13 +62,13 @@ const getMapData = async () => {
   return response.data;
 };
 
-const predictCO = async (townId, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-co/`, { params: { town: townId, range, ...overrides } });
+const predictCO = async (townId, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-co/`, { params: { town: townId, range, ...overrides }, signal });
   return response.data;
 };
 
-const predictCOAt = async (lat, lon, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-co-at/`, { params: { lat, lon, range, ...overrides } });
+const predictCOAt = async (lat, lon, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-co-at/`, { params: { lat, lon, range, ...overrides }, signal });
   return response.data;
 };
 
@@ -78,13 +79,13 @@ const getMapDataNO2 = async () => {
   return response.data;
 };
 
-const predictNO2 = async (townId, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-no2/`, { params: { town: townId, range, ...overrides } });
+const predictNO2 = async (townId, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-no2/`, { params: { town: townId, range, ...overrides }, signal });
   return response.data;
 };
 
-const predictNO2At = async (lat, lon, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-no2-at/`, { params: { lat, lon, range, ...overrides } });
+const predictNO2At = async (lat, lon, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-no2-at/`, { params: { lat, lon, range, ...overrides }, signal });
   return response.data;
 };
 
@@ -95,13 +96,13 @@ const getMapDataO3 = async () => {
   return response.data;
 };
 
-const predictO3 = async (townId, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-o3/`, { params: { town: townId, range, ...overrides } });
+const predictO3 = async (townId, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-o3/`, { params: { town: townId, range, ...overrides }, signal });
   return response.data;
 };
 
-const predictO3At = async (lat, lon, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-o3-at/`, { params: { lat, lon, range, ...overrides } });
+const predictO3At = async (lat, lon, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-o3-at/`, { params: { lat, lon, range, ...overrides }, signal });
   return response.data;
 };
 
@@ -112,20 +113,20 @@ const getMapDataSO2 = async () => {
   return response.data;
 };
 
-const predictSO2 = async (townId, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-so2/`, { params: { town: townId, range, ...overrides } });
+const predictSO2 = async (townId, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-so2/`, { params: { town: townId, range, ...overrides }, signal });
   return response.data;
 };
 
-const predictSO2At = async (lat, lon, range = '1Y', overrides = {}) => {
-  const response = await api.get(`predict-so2-at/`, { params: { lat, lon, range, ...overrides } });
+const predictSO2At = async (lat, lon, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-so2-at/`, { params: { lat, lon, range, ...overrides }, signal });
   return response.data;
 };
 
-const getPollutionInsight = async (pollutant, value, unit, status) => {
-  const response = await api.get('pollution-insight/', { 
-    params: { pollutant, value, unit, status } 
-  });
+const getPollutionInsight = async (pollutant, value, unit, status, question = null) => {
+  const params = { pollutant, value, unit, status };
+  if (question) params.question = question;
+  const response = await api.get('pollution-insight/', { params });
   return response.data;
 };
 

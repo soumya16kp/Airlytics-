@@ -9,14 +9,22 @@ django.setup()
 from api_app.models import Town
 
 def seed_population_and_elevation():
-    csv_path = os.path.join('New folder', 'SO2_Odisha_2020.csv')
-    if not os.path.exists(csv_path):
-        print(f"CSV not found at {csv_path}")
-        return
-
-    print(f"Loading CSV: {csv_path}...")
-    # Read only necessary columns and drop duplicates to save memory
-    df = pd.read_csv(csv_path, usecols=['lat', 'lon', 'pop', 'elev'])
+    hf_csv_url = os.getenv("HF_CSV_URL", "https://huggingface.co/datasets/ObitUchiha91/no2_data_yearly/resolve/main/2020/NO2_Full_Orissa.parquet")
+    hf_token = os.getenv("HF_TOKEN")
+    print(f"Loading data via Pandas: {hf_csv_url}...")
+    
+    storage_options = {"Authorization": f"Bearer {hf_token}"} if hf_token else None
+    if hf_csv_url.endswith('.parquet'):
+        df = pd.read_parquet(hf_csv_url, storage_options=storage_options)
+    else:
+        df = pd.read_csv(hf_csv_url, storage_options=storage_options)
+        
+    if 'pop' not in df.columns:
+        df['pop'] = 5000.0
+    if 'elev' not in df.columns:
+        df['elev'] = 100.0
+        
+    df = df[['lat', 'lon', 'pop', 'elev']]
     df = df.drop_duplicates(subset=['lat', 'lon'])
     
     print(f"Loaded {len(df)} unique grid points.")
