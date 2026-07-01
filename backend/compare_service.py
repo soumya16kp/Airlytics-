@@ -374,6 +374,23 @@ def get_days_for_page(year, month, page):
     return [datetime.date(year, month, d) for d in range(start_day, end_day + 1)]
 
 
+HF_AVAILABLE_YEARS = {
+    "no2": [2020, 2021, 2022, 2023],
+    "o3": [2023, 2024, 2025],
+    "so2": [2024, 2025],
+    "co": [2022, 2023, 2024, 2025],
+    "pm25": [2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+}
+
+POLLUTANT_DISPLAY_NAMES = {
+    "no2": "NO₂",
+    "o3": "O₃",
+    "so2": "SO₂",
+    "co": "CO",
+    "pm25": "PM₂.₅"
+}
+
+
 # ─── Main orchestrator ───────────────────────────────────────────────────────
 
 def get_comparison_data(lat, lon, pollutant, year_str, mode='monthly', page=1, month=1):
@@ -387,6 +404,14 @@ def get_comparison_data(lat, lon, pollutant, year_str, mode='monthly', page=1, m
         return _get_all_years_data(lat, lon, pollutant, cfg)
 
     year           = int(year_str)
+    if pollutant in HF_AVAILABLE_YEARS and year not in HF_AVAILABLE_YEARS[pollutant]:
+        years = HF_AVAILABLE_YEARS[pollutant]
+        display_name = POLLUTANT_DISPLAY_NAMES.get(pollutant, pollutant.upper())
+        return {
+            'available': False,
+            'message': f'Historical {display_name} observations are available from {min(years)} to {max(years)} only.'
+        }
+
     is_current_year = (year == datetime.date.today().year)
     fetch_gee      = not is_current_year
     message        = ("Historical GEE observations are not yet available for the current year. "
