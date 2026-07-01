@@ -26,7 +26,7 @@ import warnings
 
 from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
-from grid_data_service import grid_data_service
+from grid_data_service import get_grid_data_service
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'OdishaSO2Model.pkl')
 
@@ -196,6 +196,7 @@ class SO2Predictor:
         points = generate_timeline_points(range_str)
 
         # Get baseline pop/elev from spatial grid service
+        grid_data_service = get_grid_data_service()
         grid_pop, grid_elev = grid_data_service.get_data_at(lat, lon)
 
         elev = grid_elev

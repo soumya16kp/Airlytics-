@@ -26,4 +26,4 @@ USER user
 EXPOSE 7860
 
 # Command to run
-CMD ["gunicorn", "core_project.wsgi:application", "--bind", "0.0.0.0:7860", "--workers", "2"]
+CMD ["gunicorn", "core_project.wsgi:application", "--bind", "0.0.0.0:7860", "--workers", "1", "--timeout", "300"]

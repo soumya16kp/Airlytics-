@@ -88,5 +88,10 @@ class GridDataService:
 
         return 5000.0, 100.0
 
-# Singleton instance (loaded once at Django startup)
-grid_data_service = GridDataService()
+_grid_data_service = None
+
+def get_grid_data_service():
+    global _grid_data_service
+    if _grid_data_service is None:
+        _grid_data_service = GridDataService()
+    return _grid_data_service

@@ -8,7 +8,7 @@ from catboost import CatBoostRegressor
 
 from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
-from grid_data_service import grid_data_service
+from grid_data_service import get_grid_data_service
 from no2_extractor import NO2HuggingFaceAPI
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'no2_optimized.cbm')
@@ -208,6 +208,7 @@ class NO2Predictor:
             api.close()
 
         # Fallback to local grid service if Hugging Face was empty or failed
+        grid_data_service = get_grid_data_service()
         grid_pop, grid_elev = grid_data_service.get_data_at(lat, lon)
         
         elev = baseline_spatial.get('elev', grid_elev)

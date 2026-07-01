@@ -23,7 +23,7 @@ import pandas as pd
 
 from weather_service import get_weather_for_day, get_climate_for_month
 from timeline_utils import generate_timeline_points, day_sin, day_cos
-from grid_data_service import grid_data_service
+from grid_data_service import get_grid_data_service
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'co_prediction_model.pkl')
 
@@ -211,6 +211,7 @@ class COPredictor:
 
     def _predict_timeline(self, lat, lon, range_str, overrides=None):
         """Generate timeline of CO predictions using ensemble."""
+        grid_data_service = get_grid_data_service()
         pop, elev = grid_data_service.get_data_at(lat, lon)
         if overrides:
             if 'elev' in overrides: elev = float(overrides['elev'])
