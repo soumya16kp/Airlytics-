@@ -67,6 +67,7 @@ const HistoricalCompareGraph = ({ lat, lon, pollutant, whoLimit, pollutantName, 
       const data = await locationService.getComparison({
         lat, lon, pollutant, year: selectedYear, mode, page, month: selectedMonth
       });
+      console.log("Comparison API Response:", data);
       setCompData(data);
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to load comparison data.');
@@ -170,10 +171,11 @@ const HistoricalCompareGraph = ({ lat, lon, pollutant, whoLimit, pollutantName, 
 
       {/* Satellite partial-failure notice: shown when some months failed but not all */}
       {compData && !loading && !error && !compData.is_current_year && (() => {
-        const failedLabels = compData.data
+        const chartData = Array.isArray(compData?.data) ? compData.data : [];
+        const failedLabels = chartData
           .filter(d => d.has_gee === false && d.gee_actual === null)
           .map(d => d.label);
-        const totalExpected = compData.data.length;
+        const totalExpected = chartData.length;
         if (failedLabels.length === 0 || failedLabels.length === totalExpected) return null;
         return (
           <div className="compare-warn-banner">
@@ -186,7 +188,10 @@ const HistoricalCompareGraph = ({ lat, lon, pollutant, whoLimit, pollutantName, 
 
       {/* Satellite total-failure notice: all months failed */}
       {compData && !loading && !error && !compData.is_current_year && (() => {
-        const allFailed = compData.data.every(d => d.gee_actual === null);
+        const chartData = Array.isArray(compData?.data) ? compData.data : [];
+        const allFailed =
+            chartData.length > 0 &&
+            chartData.every(d => d.gee_actual === null);
         if (!allFailed) return null;
         return (
           <div className="compare-error-banner">
@@ -198,7 +203,7 @@ const HistoricalCompareGraph = ({ lat, lon, pollutant, whoLimit, pollutantName, 
 
       {compData && !loading && !error && (
         <ResponsiveContainer width="100%" height={420}>
-          <LineChart data={compData.data} margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
+          <LineChart data={Array.isArray(compData?.data) ? compData.data : []} margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
             <XAxis dataKey="label" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} />
