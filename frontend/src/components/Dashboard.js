@@ -26,6 +26,7 @@ const POLLUTANT_LABELS = {
   no2: { name: 'NO₂', full: 'Nitrogen Dioxide',   unit: 'µg/m³',   whoLimit: 40,   molarMass: 46.01 },
   so2: { name: 'SO₂', full: 'Sulfur Dioxide',     unit: 'µg/m³',   whoLimit: 40,   molarMass: 64.07 },
   o3:  { name: 'O₃',  full: 'Ozone',              unit: 'µg/m³',   whoLimit: 100,  molarMass: 48.00 },
+  pm25: { name: 'PM₂.₅', full: 'Fine Particulate Matter', unit: 'µg/m³', whoLimit: 15, molarMass: null },
 };
 
 const FUTURE_RANGES = ['1D', '1W', '1M', '3M', '6M', '1Y'];
@@ -37,6 +38,7 @@ const predictByType = {
   no2: locationService.predictNO2,
   o3:  locationService.predictO3,
   so2: locationService.predictSO2,
+  pm25: locationService.predictPM25,
 };
 
 const predictAtByType = {
@@ -44,6 +46,7 @@ const predictAtByType = {
   no2: locationService.predictNO2At,
   o3:  locationService.predictO3At,
   so2: locationService.predictSO2At,
+  pm25: locationService.predictPM25At,
 };
 
 const PARAMETER_CONFIG = {
@@ -74,6 +77,13 @@ const PARAMETER_CONFIG = {
     { key: 'wind_speed', label: 'Wind Speed', min: 0, max: 20, step: 0.2, unit: 'm/s', default: 3 },
     { key: 'pbl', label: 'PBL Height', min: 100, max: 3000, step: 50, unit: 'm', default: 800 },
     { key: 'pop', label: 'Population', min: 1000, max: 1000000, step: 1000, unit: '', default: 5000 },
+  ],
+  pm25: [
+    { key: 'pop', label: 'Population Density', min: 1000, max: 1000000, step: 1000, unit: '', default: 5000 },
+    { key: 'temp', label: 'Temperature', min: 10, max: 50, step: 0.5, unit: '°C', default: 27 },
+    { key: 'wind_speed', label: 'Wind Speed', min: 0, max: 20, step: 0.2, unit: 'm/s', default: 3 },
+    { key: 'pbl', label: 'PBL Height', min: 100, max: 3000, step: 50, unit: 'm', default: 800 },
+    { key: 'humidity', label: 'Relative Humidity', min: 0, max: 100, step: 1, unit: '%', default: 60 },
   ]
 };
 

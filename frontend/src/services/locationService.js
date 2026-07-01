@@ -123,6 +123,23 @@ const predictSO2At = async (lat, lon, range = '1Y', overrides = {}, signal) => {
   return response.data;
 };
 
+// ── PM2.5 ENDPOINTS ─────────────────────────────────────────────────────────
+
+const getMapDataPM25 = async () => {
+  const response = await api.get('map-data-pm25/');
+  return response.data;
+};
+
+const predictPM25 = async (range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-pm25/`, { params: { range, ...overrides }, signal });
+  return response.data;
+};
+
+const predictPM25At = async (lat, lon, range = '1Y', overrides = {}, signal) => {
+  const response = await api.get(`predict-pm25-at/`, { params: { lat, lon, range, ...overrides }, signal });
+  return response.data;
+};
+
 const getPollutionInsight = async (pollutant, value, unit, status, question = null) => {
   const params = { pollutant, value, unit, status };
   if (question) params.question = question;
@@ -174,6 +191,10 @@ const locationService = {
   getMapDataSO2,
   predictSO2,
   predictSO2At,
+  // PM2.5
+  getMapDataPM25,
+  predictPM25,
+  predictPM25At,
   // AI
   getPollutionInsight,
   // OpenAQ Proxy
