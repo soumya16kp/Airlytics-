@@ -206,8 +206,7 @@ def _fetch_gee_monthly_cached(lat_r, lon_r, pollutant, year):
 
 def get_gee_monthly(lat, lon, pollutant, year):
     if pollutant == 'no2':
-        from no2_extractor import NO2HuggingFaceAPI
-        api = NO2HuggingFaceAPI()
+        from extractor_service import no2_api as api
         try:
             df = api.get_data_for_coordinate(lat, lon, year)
             if not df.empty:
@@ -226,8 +225,6 @@ def get_gee_monthly(lat, lon, pollutant, year):
                 print(f"[CompareService DEBUG] NO2 HF returned empty DataFrame, falling back to GEE.")
         except Exception as e:
             print(f"[CompareService] NO2 Hugging Face monthly extraction failed: {e}")
-        finally:
-            api.close()
 
     # Use rounded coordinates for stable caching
     return _fetch_gee_monthly_cached(round(lat, 4), round(lon, 4), pollutant, year)
@@ -243,8 +240,7 @@ def get_gee_for_dates(lat, lon, pollutant, dates, window_days=1):
     """
     if pollutant == 'no2' and dates:
         years = list(set(d.year for d in dates))
-        from no2_extractor import NO2HuggingFaceAPI
-        api = NO2HuggingFaceAPI()
+        from extractor_service import no2_api as api
         try:
             results = []
             year_query = years[0] if len(years) == 1 else "*"
@@ -268,8 +264,6 @@ def get_gee_for_dates(lat, lon, pollutant, dates, window_days=1):
                 return results
         except Exception as e:
             print(f"[CompareService] NO2 Hugging Face date extraction failed: {e}")
-        finally:
-            api.close()
 
     if ee is None:
         return [{'date_str': d.isoformat(), 'gee_actual_raw': None} for d in dates]

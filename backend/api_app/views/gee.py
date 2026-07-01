@@ -36,15 +36,21 @@ def get_gee_credentials():
 
 # Initialize GEE once at startup
 
+_EE_INITIALIZED = False
+
 def initialize_ee():
-    global GEE_INITIALIZATION_ERROR
+    global GEE_INITIALIZATION_ERROR, _EE_INITIALIZED
+    if _EE_INITIALIZED:
+        return
     try:
         credentials = get_gee_credentials()
         ee.Initialize(credentials)
         GEE_INITIALIZATION_ERROR = None
+        _EE_INITIALIZED = True
         print('Earth Engine initialized successfully in gee.py')
     except Exception as e:
         GEE_INITIALIZATION_ERROR = str(e)
+        _EE_INITIALIZED = False
         print(f'Error initializing Earth Engine at startup: {e}')
 
 

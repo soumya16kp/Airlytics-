@@ -266,15 +266,12 @@ class O3Predictor:
             hist_norm_val = self._get_cluster_hist_norm(lat, lon, month)
             if hist_norm_val is None:
                 if hist_norm_base is None:
-                    from o3_extractor import O3HuggingFaceAPI
-                    api = O3HuggingFaceAPI()
+                    from extractor_service import o3_api as api
                     try:
                         hist_df = api.get_data_for_coordinate(lat, lon, "2023")
                         hist_norm_base = hist_df['o3_level'].mean() if not hist_df.empty else DEFAULT_O3_LAG
                     except Exception:
                         hist_norm_base = DEFAULT_O3_LAG
-                    finally:
-                        api.close()
                 hist_norm_val = hist_norm_base
 
             raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop, hist_norm=hist_norm_val)

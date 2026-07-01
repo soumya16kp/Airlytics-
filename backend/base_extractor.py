@@ -1,6 +1,8 @@
 import os
+import time
 import duckdb
 import pandas as pd
+import threading
 
 # Centralized pollutant configuration
 POLLUTANT_CONFIGS = {
@@ -26,7 +28,87 @@ POLLUTANT_CONFIGS = {
     }
 }
 
+# State bounding boxes in India
+STATE_BBOXES = {
+    'Chandigarh': (30.7693, 30.7693, 76.7906, 76.7906),
+    'Goa': (14.9916, 15.6916, 73.7790, 74.2790),
+    'Gujarat': (20.2208, 24.6208, 68.4782, 74.3782),
+    'Jharkhand': (22.0666, 25.2666, 83.4236, 87.9236),
+    'Nagaland': (25.3020, 26.9020, 93.4317, 95.2317),
+    'Puducherry': (10.9111, 16.7111, 75.3211, 82.2211),
+    'Uttar Pradesh': (23.9728, 30.2728, 77.1849, 84.5849),
+    'Haryana': (27.7560, 30.8560, 74.5653, 77.5653),
+    'Tamil Nadu': (8.1745, 13.4745, 76.3257, 80.3257),
+    'West Bengal': (21.5685, 27.1685, 85.9264, 89.8264),
+    'Daman and Diu': (20.7687, 20.8687, 70.7712, 70.8712),
+    'Meghalaya': (25.1288, 26.0288, 89.9157, 92.7157),
+    'Chhattisgarh': (17.8828, 24.0828, 80.3396, 84.3396),
+    'Tripura': (23.0290, 24.5290, 91.2509, 92.2509),
+    'Dadra and Nagar Haveli': (20.1516, 20.2516, 73.0223, 73.1223),
+    'Manipur': (23.9360, 25.6360, 93.0736, 94.6736),
+    'Arunachal Pradesh': (26.7426, 28.2426, 94.2358, 97.1358),
+    'Himachal Pradesh': (30.4845, 33.0845, 75.6788, 78.8788),
+    'Kerala': (8.3973, 12.6973, 74.9661, 77.3661),
+    'Andhra Pradesh': (12.7118, 19.8118, 76.8570, 84.6570),
+    'Maharashtra': (15.7046, 21.9046, 72.7504, 80.8504),
+    'Orissa': (17.9026, 22.5026, 81.4830, 87.3830),
+    'Delhi': (28.5085, 28.8085, 76.9329, 77.3329),
+    'Mizoram': (22.0467, 24.4467, 92.3594, 93.3594),
+    'Assam': (24.2348, 27.9348, 89.7948, 95.8948),
+    'Karnataka': (11.6745, 18.3745, 74.1547, 78.5547),
+    'Madhya Pradesh': (21.1753, 26.7753, 74.1347, 82.7347),
+    'Rajasthan': (23.1627, 30.0627, 69.5837, 78.1837),
+    'Sikkim': (27.1816, 28.0816, 88.1169, 88.8169),
+    'Uttarakhand': (28.8156, 31.2156, 77.6622, 80.9622),
+    'Bihar': (24.3870, 27.4870, 83.4161, 88.2161),
+    'Punjab': (29.6462, 32.4462, 73.9709, 76.8709),
+    'Andaman and Nicobar': (6.8560, 13.6560, 92.4042, 93.9042),
+}
+
+def resolve_partitions(lat, lon, buffer_deg=0.5):
+    candidate_states = []
+    for state, (min_lat, max_lat, min_lon, max_lon) in STATE_BBOXES.items():
+        if (min_lat - buffer_deg) <= lat <= (max_lat + buffer_deg) and \
+           (min_lon - buffer_deg) <= lon <= (max_lon + buffer_deg):
+            candidate_states.append(state)
+    return candidate_states
+
+# Lightweight thread-safe TTL cache
+class SimpleTTLCache:
+    def __init__(self, maxsize=1024, ttl=3600):
+        self.maxsize = maxsize
+        self.ttl = ttl
+        self.cache = {}
+        self.lock = threading.Lock()
+
+    def get(self, key):
+        with self.lock:
+            if key in self.cache:
+                val, expire_time = self.cache[key]
+                if time.time() < expire_time:
+                    return val
+                else:
+                    del self.cache[key]
+            return None
+
+    def set(self, key, val):
+        with self.lock:
+            if len(self.cache) >= self.maxsize:
+                now = time.time()
+                expired_keys = [k for k, (_, exp) in self.cache.items() if now >= exp]
+                if expired_keys:
+                    for k in expired_keys:
+                        del self.cache[k]
+                else:
+                    del self.cache[next(iter(self.cache))]
+            self.cache[key] = (val, time.time() + self.ttl)
+
 class HuggingFaceBaseAPI:
+    # Single global DuckDB connection shared across all threads
+    _GLOBAL_CONN = None
+    _GLOBAL_CONN_LOCK = threading.Lock()
+    _GLOBAL_FILE_CACHE = {}
+
     def __init__(self, pollutant_name, hf_token=None):
         self.pollutant_name = pollutant_name
         cfg = POLLUTANT_CONFIGS[pollutant_name]
@@ -34,27 +116,29 @@ class HuggingFaceBaseAPI:
         self.fallback_csv_pattern = cfg["fallback_csv_pattern"]
         
         self.base_path = f"hf://datasets/ObitUchiha91/Airlytics_data_set/{self.dataset_folder}"
-        self.con = duckdb.connect()
+        self.hf_token = hf_token or os.environ.get("HF_TOKEN")
+        self._query_cache = SimpleTTLCache(maxsize=1024, ttl=3600)
         
-        try:
-            self.con.execute("INSTALL httpfs;")
-            self.con.execute("LOAD httpfs;")
-        except Exception as e:
-            print(f"[{self.__class__.__name__}] Failed to install/load httpfs: {e}")
-            
-        token = hf_token or os.environ.get("HF_TOKEN")
-        if token:
-            try:
-                self.con.execute(f"CREATE SECRET hf_secret (TYPE HUGGINGFACE, TOKEN '{token}');")
-                print(f"[{self.__class__.__name__}] Successfully authenticated with Hugging Face.")
-            except Exception as e:
-                print(f"[{self.__class__.__name__}] Failed to create HF secret: {e}")
-        else:
-            print(f"[{self.__class__.__name__}] No HF_TOKEN provided. Querying public dataset.")
+        # Initialize connection once
+        with HuggingFaceBaseAPI._GLOBAL_CONN_LOCK:
+            if HuggingFaceBaseAPI._GLOBAL_CONN is None:
+                conn = duckdb.connect()
+                try:
+                    conn.execute("INSTALL httpfs; LOAD httpfs;")
+                    if self.hf_token:
+                        conn.execute(f"CREATE SECRET hf_secret (TYPE HUGGINGFACE, TOKEN '{self.hf_token}');")
+                except Exception as e:
+                    print(f"[{self.__class__.__name__}] Failed to initialize DuckDB global connection: {e}")
+                HuggingFaceBaseAPI._GLOBAL_CONN = conn
+
+    def _get_cursor(self):
+        return HuggingFaceBaseAPI._GLOBAL_CONN.cursor()
 
     def _init_hf_files(self):
-        if hasattr(self, '_hf_files_initialized') and self._hf_files_initialized:
+        if self.dataset_folder in HuggingFaceBaseAPI._GLOBAL_FILE_CACHE:
+            self.hf_files = HuggingFaceBaseAPI._GLOBAL_FILE_CACHE[self.dataset_folder]
             return
+            
         self.hf_files = []
         try:
             from huggingface_hub import HfApi
@@ -64,7 +148,6 @@ class HuggingFaceBaseAPI:
                 repo_type='dataset',
                 recursive=True
             )
-            # Find all files belonging to this pollutant folder
             prefix = f"{self.dataset_folder}/"
             self.hf_files = [
                 node.path for node in nodes
@@ -73,23 +156,24 @@ class HuggingFaceBaseAPI:
                 and getattr(node, 'size', 0) > 0 
                 and 'tmp' not in node.path
             ]
+            HuggingFaceBaseAPI._GLOBAL_FILE_CACHE[self.dataset_folder] = self.hf_files
             print(f"[{self.__class__.__name__}] Lazily loaded {len(self.hf_files)} valid files from Hugging Face.")
         except Exception as e:
             print(f"[{self.__class__.__name__}] Failed to list HF files lazily: {e}. Using fallback glob pattern.")
             self.hf_files = []
-        self._hf_files_initialized = True
 
     def _get_year_folder(self, year):
-        # Specific folder override for NO2 2021
         if self.dataset_folder == "NO2" and str(year) == "2021":
             return "2021 (1)"
         return str(year)
 
-    def _get_valid_files(self, year="*"):
+    def _get_valid_files(self, year="*", partitions=None):
         self._init_hf_files()
         
+        if self.dataset_folder == "PM25":
+            partitions = None
+
         if not self.hf_files:
-            # Fallback glob pattern
             year_folder = self._get_year_folder(year)
             if year == "*":
                 return [f"{self.base_path}/*/*.parquet"]
@@ -101,8 +185,22 @@ class HuggingFaceBaseAPI:
             parts = path.split('/')
             if len(parts) >= 3:
                 file_year_folder = parts[1]
-                # Match if folder starts with queried year (handles "2021 (1)" for "2021")
+                filename = parts[2].lower()
+                
                 if year == "*" or file_year_folder.startswith(str(year)):
+                    if partitions:
+                        state_matched = False
+                        for state in partitions:
+                            state_clean = state.lower().replace(" ", "_")
+                            state_clean_no_space = state.lower().replace(" ", "")
+                            if (state_clean in filename or 
+                                state_clean_no_space in filename or 
+                                state.lower() in filename):
+                                state_matched = True
+                                break
+                        if not state_matched:
+                            continue
+                            
                     matched.append(f"hf://datasets/ObitUchiha91/Airlytics_data_set/{path}")
         
         if not matched:
@@ -115,15 +213,19 @@ class HuggingFaceBaseAPI:
         return matched
 
     def get_by_state_and_year(self, state_name, year):
+        t0 = time.time()
         print(f"[{self.__class__.__name__}] Fetching data for {state_name} in {year}...")
-        file_paths = self._get_valid_files(year)
+        
+        # Partition pruning: query specific state's folder if it exists in partitions bounds
+        t_list_start = time.time()
+        file_paths = self._get_valid_files(year, [state_name])
+        t_list = time.time() - t_list_start
         print(f"Reading {file_paths}")
         
-        # Get schema columns dynamically to avoid Binder Errors
-        temp_df = self.con.execute(f"SELECT * FROM read_parquet({file_paths}, union_by_name=true) LIMIT 0").df()
+        cursor = self._get_cursor()
+        temp_df = cursor.execute(f"SELECT * FROM read_parquet({file_paths}, union_by_name=true) LIMIT 0").df()
         cols = temp_df.columns.tolist()
         
-        # Resolve coordinates and pollutant columns
         lat_expr = "lat" if "lat" in cols else "latitude"
         lon_expr = "lon" if "lon" in cols else "longitude"
         if "lat" in cols and "latitude" in cols:
@@ -140,27 +242,47 @@ class HuggingFaceBaseAPI:
 
         other_cols = ["pbl", "temp", "u", "v", "humidity", "lights", "elev", "pop", "ndvi", "cld"]
         select_others = [c for c in other_cols if c in cols]
-        select_others_str = ", ".join(select_others)
-        if select_others_str:
-            select_others_str = ", " + select_others_str
+        
+        cast_others = [f"try_cast({c} as double) as {c}" for c in select_others]
+        cast_others_str = ", ".join(cast_others)
+        if cast_others_str:
+            cast_others_str = ", " + cast_others_str
 
         query = f"""
             SELECT 
                 date,
-                cast({lat_expr} as double) as lat,
-                cast({lon_expr} as double) as lon,
-                {val_expr} as {target_val_col}
-                {select_others_str}
+                try_cast({lat_expr} as double) as lat,
+                try_cast({lon_expr} as double) as lon,
+                try_cast({val_expr} as double) as {target_val_col}
+                {cast_others_str}
             FROM read_parquet({file_paths}, union_by_name=true)
         """
-        return self.con.execute(query).df()
+        
+        t_query_start = time.time()
+        df = cursor.execute(query).df()
+        t_query = time.time() - t_query_start
+        
+        t_total = time.time() - t0
+        print(f"[{self.__class__.__name__}] Query returned {len(df)} rows. Timings -> File list: {t_list:.3f}s, Query: {t_query:.3f}s, Total: {t_total:.3f}s")
+        return df
 
     def get_by_bounding_box(self, min_lat, max_lat, min_lon, max_lon, year="*"):
+        t0 = time.time()
         print(f"[{self.__class__.__name__}] Fetching bounding box for year(s): {year}...")
-        file_paths = self._get_valid_files(year)
+        
+        partitions = []
+        for state, (s_min_lat, s_max_lat, s_min_lon, s_max_lon) in STATE_BBOXES.items():
+            if s_min_lat <= max_lat and s_max_lat >= min_lat and \
+               s_min_lon <= max_lon and s_max_lon >= min_lon:
+                partitions.append(state)
+
+        t_list_start = time.time()
+        file_paths = self._get_valid_files(year, partitions)
+        t_list = time.time() - t_list_start
         print(f"Reading {file_paths}")
         
-        temp_df = self.con.execute(f"SELECT * FROM read_parquet({file_paths}, union_by_name=true) LIMIT 0").df()
+        cursor = self._get_cursor()
+        temp_df = cursor.execute(f"SELECT * FROM read_parquet({file_paths}, union_by_name=true) LIMIT 0").df()
         cols = temp_df.columns.tolist()
         
         lat_expr = "lat" if "lat" in cols else "latitude"
@@ -179,31 +301,40 @@ class HuggingFaceBaseAPI:
 
         other_cols = ["pbl", "temp", "u", "v", "humidity", "lights", "elev", "pop", "ndvi", "cld"]
         select_others = [c for c in other_cols if c in cols]
-        select_others_str = ", ".join(select_others)
-        if select_others_str:
-            select_others_str = ", " + select_others_str
+        
+        cast_others = [f"try_cast({c} as double) as {c}" for c in select_others]
+        cast_others_str = ", ".join(cast_others)
+        if cast_others_str:
+            cast_others_str = ", " + cast_others_str
 
         query = f"""
             SELECT 
                 date,
-                cast({lat_expr} as double) as lat,
-                cast({lon_expr} as double) as lon,
-                {val_expr} as {target_val_col}
-                {select_others_str}
+                try_cast({lat_expr} as double) as lat,
+                try_cast({lon_expr} as double) as lon,
+                try_cast({val_expr} as double) as {target_val_col}
+                {cast_others_str}
             FROM read_parquet({file_paths}, union_by_name=true)
-            WHERE cast({lat_expr} as double) BETWEEN {min_lat} AND {max_lat}
-              AND cast({lon_expr} as double) BETWEEN {min_lon} AND {max_lon}
+            WHERE try_cast({lat_expr} as double) BETWEEN $1 AND $2
+              AND try_cast({lon_expr} as double) BETWEEN $3 AND $4
         """
-        df = self.con.execute(query).df()
-        print(f"[{self.__class__.__name__}] Query returned {len(df)} rows.")
+        
+        t_query_start = time.time()
+        df = cursor.execute(query, [min_lat, max_lat, min_lon, max_lon]).df()
+        t_query = time.time() - t_query_start
+        
+        t_total = time.time() - t0
+        print(f"[{self.__class__.__name__}] Query returned {len(df)} rows. Timings -> File list: {t_list:.3f}s, Query: {t_query:.3f}s, Total: {t_total:.3f}s")
         return df
 
     def get_state_summary(self, year="*"):
+        t0 = time.time()
         print(f"[{self.__class__.__name__}] Calculating summary statistics for year(s): {year}...")
         file_paths = self._get_valid_files(year)
         print(f"Reading {file_paths}")
         
-        temp_df = self.con.execute(f"SELECT * FROM read_parquet({file_paths}, union_by_name=true) LIMIT 0").df()
+        cursor = self._get_cursor()
+        temp_df = cursor.execute(f"SELECT * FROM read_parquet({file_paths}, union_by_name=true) LIMIT 0").df()
         cols = temp_df.columns.tolist()
         
         target_val_col = f"{self.pollutant_name}_level"
@@ -215,42 +346,103 @@ class HuggingFaceBaseAPI:
             SELECT 
                 filename as source_file,
                 COUNT(*) as total_readings,
-                AVG({val_col}) as mean_{self.pollutant_name},
-                MAX({val_col}) as max_{self.pollutant_name}
+                AVG(try_cast({val_col} as double)) as mean_{self.pollutant_name},
+                MAX(try_cast({val_col} as double)) as max_{self.pollutant_name}
             FROM read_parquet({file_paths}, union_by_name=true, filename=true)
             GROUP BY source_file
         """
-        return self.con.execute(query).df()
+        df = cursor.execute(query).df()
+        t_total = time.time() - t0
+        print(f"[{self.__class__.__name__}] State summary took {t_total:.3f}s")
+        return df
 
     def get_data_for_coordinate(self, lat, lon, year="2023"):
-        use_hf = True
+        cache_key = (lat, lon, year)
+        cached_df = self._query_cache.get(cache_key)
+        if cached_df is not None:
+            print(f"[{self.__class__.__name__}] Cache hit for key {cache_key}")
+            return cached_df.copy()
 
-        if use_hf:
-            try:
-                tolerance = 0.05
-                df = self.get_by_bounding_box(lat - tolerance, lat + tolerance, lon - tolerance, lon + tolerance, year)
-                if df.empty:
-                    print(f"[{self.__class__.__name__}] Tight bbox empty, widening to 0.2 for ({lat}, {lon})")
-                    df = self.get_by_bounding_box(lat - 0.2, lat + 0.2, lon - 0.2, lon + 0.2, year)
+        t0 = time.time()
+        print(f"[{self.__class__.__name__}] Fetching closest coordinate for ({lat}, {lon}) in year {year}...")
+        
+        partitions = resolve_partitions(lat, lon, buffer_deg=0.5)
+        
+        t_list_start = time.time()
+        file_paths = self._get_valid_files(year, partitions)
+        t_list = time.time() - t_list_start
+        print(f"Reading {file_paths}")
+        
+        cursor = self._get_cursor()
+        
+        temp_df = cursor.execute(f"SELECT * FROM read_parquet({file_paths}, union_by_name=true) LIMIT 0").df()
+        cols = temp_df.columns.tolist()
+        
+        lat_expr = "lat" if "lat" in cols else "latitude"
+        lon_expr = "lon" if "lon" in cols else "longitude"
+        if "lat" in cols and "latitude" in cols:
+            lat_expr = "coalesce(lat, latitude)"
+        if "lon" in cols and "longitude" in cols:
+            lon_expr = "coalesce(lon, longitude)"
+            
+        target_val_col = f"{self.pollutant_name}_level"
+        val_expr = self.pollutant_name
+        if target_val_col in cols:
+            val_expr = target_val_col
+        if target_val_col in cols and self.pollutant_name in cols:
+            val_expr = f"coalesce({self.pollutant_name}, {target_val_col})"
+
+        other_cols = ["pbl", "temp", "u", "v", "humidity", "lights", "elev", "pop", "ndvi", "cld"]
+        select_others = [c for c in other_cols if c in cols]
+        
+        cast_others = [f"try_cast({c} as double) as {c}" for c in select_others]
+        cast_others_str = ", ".join(cast_others)
+        if cast_others_str:
+            cast_others_str = ", " + cast_others_str
+
+        radius = 0.2
+        min_lat, max_lat = lat - radius, lat + radius
+        min_lon, max_lon = lon - radius, lon + radius
+
+        query = f"""
+            SELECT 
+                date,
+                try_cast({lat_expr} as double) as lat,
+                try_cast({lon_expr} as double) as lon,
+                try_cast({val_expr} as double) as {target_val_col}
+                {cast_others_str}
+            FROM read_parquet({file_paths}, union_by_name=true)
+            WHERE try_cast({lat_expr} as double) BETWEEN $1 AND $2
+              AND try_cast({lon_expr} as double) BETWEEN $3 AND $4
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY date 
+                ORDER BY (try_cast({lat_expr} as double) - $5)^2 + (try_cast({lon_expr} as double) - $6)^2
+            ) = 1
+        """
+        
+        try:
+            t_query_start = time.time()
+            df = cursor.execute(query, [min_lat, max_lat, min_lon, max_lon, lat, lon]).df()
+            t_query = time.time() - t_query_start
+            
+            if df.empty:
+                print(f"[{self.__class__.__name__}] Radius 0.2 returned empty. Retrying with radius 0.5...")
+                df = cursor.execute(query, [lat - 0.5, lat + 0.5, lon - 0.5, lon + 0.5, lat, lon]).df()
+                t_query = time.time() - t_query_start
                 
-                if not df.empty:
-                    print(f"[{self.__class__.__name__}] HF data: {len(df)} rows, columns: {list(df.columns)}")
-                    lat_col = 'lat'
-                    lon_col = 'lon'
-                    
-                    df['dist'] = (df[lat_col] - lat)**2 + (df[lon_col] - lon)**2
-                    min_dist = df['dist'].min()
-                    closest_coords = df[df['dist'] == min_dist]
-                    closest_coords = closest_coords.drop(columns=['dist'])
-                    print(f"[{self.__class__.__name__}] [SUCCESS] SOURCE=HuggingFace for ({lat}, {lon}), "
-                          f"closest={len(closest_coords)} rows, dist={min_dist:.6f}")
-                    return closest_coords
-                else:
-                    print(f"[{self.__class__.__name__}] [WARNING] HF returned empty for ({lat}, {lon}), year={year}")
-            except Exception as e:
-                print(f"[{self.__class__.__name__}] [ERROR] Hugging Face query failed: {e}. Falling back to local CSV.")
+            t_total = time.time() - t0
+            print(f"[{self.__class__.__name__}] Query returned {len(df)} rows. Timings -> File list: {t_list:.3f}s, Query: {t_query:.3f}s, Total: {t_total:.3f}s")
+            
+            if not df.empty:
+                self._query_cache.set(cache_key, df)
+                print(f"[{self.__class__.__name__}] [SUCCESS] SOURCE=HuggingFace for ({lat}, {lon}), rows={len(df)}")
+                return df.copy()
+            else:
+                print(f"[{self.__class__.__name__}] [WARNING] HF returned empty for ({lat}, {lon}), year={year}")
+        except Exception as e:
+            print(f"[{self.__class__.__name__}] [ERROR] Hugging Face query failed: {e}. Falling back to local CSV.")
 
-        # Fallback: Query local CSV files in `no2_weather_data/`
+        # Fallback to local CSV
         is_production = "SPACE_ID" in os.environ or os.environ.get("ENV") == "production"
         if is_production:
             print(f"[{self.__class__.__name__}] Running in production space, skipping local CSV fallback.")
@@ -271,40 +463,46 @@ class HuggingFaceBaseAPI:
                 print(f"[{self.__class__.__name__}] Local CSV directory not found at {csv_dir}")
                 return pd.DataFrame()
 
-            tolerance = 0.05
+            tolerance = 0.2
             safe_file_pattern = file_pattern.replace("\\", "/")
+            
+            # Check file existence prior to read_parquet
+            if not os.path.exists(safe_file_pattern):
+                print(f"[{self.__class__.__name__}] Fallback file does not exist: {safe_file_pattern}")
+                return pd.DataFrame()
+
             print(f"Reading local CSV fallback: {safe_file_pattern}")
             
             query = f"""
                 SELECT * 
                 FROM '{safe_file_pattern}'
-                WHERE lat BETWEEN {lat - tolerance} AND {lat + tolerance}
-                  AND lon BETWEEN {lon - tolerance} AND {lon + tolerance}
+                WHERE try_cast(lat as double) BETWEEN $1 AND $2
+                  AND try_cast(lon as double) BETWEEN $3 AND $4
+                QUALIFY ROW_NUMBER() OVER (
+                    PARTITION BY date 
+                    ORDER BY (try_cast(lat as double) - $5)^2 + (try_cast(lon as double) - $6)^2
+                ) = 1
             """
-            df = self.con.execute(query).df()
-            if df.empty:
-                query = f"""
-                    SELECT * 
-                    FROM '{safe_file_pattern}'
-                    WHERE lat BETWEEN {lat - 0.2} AND {lat + 0.2}
-                      AND lon BETWEEN {lon - 0.2} AND {lon + 0.2}
-                """
-                df = self.con.execute(query).df()
-
+            df = cursor.execute(query, [lat - tolerance, lat + tolerance, lon - tolerance, lon + tolerance, lat, lon]).df()
             if not df.empty:
-                df['dist'] = (df['lat'] - lat)**2 + (df['lon'] - lon)**2
-                min_dist = df['dist'].min()
-                closest_coords = df[df['dist'] == min_dist]
-                closest_coords = closest_coords.drop(columns=['dist'])
                 print(f"[{self.__class__.__name__}] Loaded closest coordinates from local CSV fallback for ({lat}, {lon})")
-                return closest_coords
+                return df
         except Exception as e:
             print(f"[{self.__class__.__name__}] Local CSV query failed: {e}")
             
         return pd.DataFrame()
 
     def close(self):
+        # NOP since it's a global connection closed on exit
+        pass
+
+# Graceful shutdown hook
+import atexit
+@atexit.register
+def _shutdown():
+    if HuggingFaceBaseAPI._GLOBAL_CONN:
         try:
-            self.con.close()
+            HuggingFaceBaseAPI._GLOBAL_CONN.close()
+            print("[HuggingFaceBaseAPI] Closed shared global DuckDB connection.")
         except Exception:
             pass

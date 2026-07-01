@@ -9,7 +9,7 @@ import pandas as pd
 from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
 from grid_data_service import get_grid_data_service
-from pm25_extractor import PM25HuggingFaceAPI
+from extractor_service import pm25_api
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'pm25_prediction_model.pkl')
 CLUSTER_MAP_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'pm25_cluster_map.csv')
@@ -25,7 +25,7 @@ class PM25Predictor:
         self._cluster_map = None
         self._ready = False
         self._error = None
-        self._hf_api = PM25HuggingFaceAPI()
+        self._hf_api = pm25_api
 
     def _load(self):
         if self._ready or self._error:

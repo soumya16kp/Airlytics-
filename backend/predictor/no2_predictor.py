@@ -9,7 +9,6 @@ from catboost import CatBoostRegressor
 from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
 from grid_data_service import get_grid_data_service
-from no2_extractor import NO2HuggingFaceAPI
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'no2_optimized.cbm')
 TIF_PATH   = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'NO2_2026_FullYear_12Bands.tif')
@@ -191,7 +190,7 @@ class NO2Predictor:
         
         # Get baseline from Hugging Face dataset
         baseline_spatial = {}
-        api = NO2HuggingFaceAPI()
+        from extractor_service import no2_api as api
         try:
             df_baseline = api.get_data_for_coordinate(lat, lon)
             if not df_baseline.empty:
@@ -204,8 +203,6 @@ class NO2Predictor:
                 baseline_spatial['humidity'] = float(row.get('humidity', 50.0))
         except Exception as e:
             print(f"[NO2] Hugging Face baseline retrieval failed: {e}")
-        finally:
-            api.close()
 
         # Fallback to local grid service if Hugging Face was empty or failed
         grid_data_service = get_grid_data_service()

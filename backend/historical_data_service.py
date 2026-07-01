@@ -65,23 +65,20 @@ class HistoricalDataService:
 
     def get_monthly_hf_data(self, lat, lon):
         import pandas as pd
-        
         api = None
         if self._pollutant == 'no2':
-            from no2_extractor import NO2HuggingFaceAPI
-            api = NO2HuggingFaceAPI()
+            from extractor_service import no2_api as api
         elif self._pollutant == 'o3':
-            from o3_extractor import O3HuggingFaceAPI
-            api = O3HuggingFaceAPI()
+            from extractor_service import o3_api as api
         elif self._pollutant == 'co':
-            from co_extractor import COHuggingFaceAPI
-            api = COHuggingFaceAPI()
+            from extractor_service import co_api as api
         elif self._pollutant == 'so2':
-            from so2_extractor import SO2HuggingFaceAPI
-            api = SO2HuggingFaceAPI()
+            from extractor_service import so2_api as api
         elif self._pollutant == 'pm25':
-            from pm25_extractor import PM25HuggingFaceAPI
-            api = PM25HuggingFaceAPI()
+            from extractor_service import pm25_api as api
+            
+        if not api:
+            return []
             
         try:
             df = api.get_data_for_coordinate(lat, lon, "*")
@@ -132,8 +129,6 @@ class HistoricalDataService:
         except Exception as e:
             print(f"[HistoricalDataService] Failed to fetch monthly {self._pollutant} data from Hugging Face: {e}")
             return []
-        finally:
-            api.close()
 
     def build_comparison_data(self, lat, lon, predictor_fn):
         """
