@@ -42,3 +42,16 @@ models/*.tif
 *.cbm
 models/*.cbm
 db.sqlite3
+
+# Local Hugging Face backend
+airlytics-backend/
+
+# Local data folders
+CO/
+NO2/
+O3/
+PM25/
+SO2/
+
+# Local upload/cache folders
+hf_upload_temp/
