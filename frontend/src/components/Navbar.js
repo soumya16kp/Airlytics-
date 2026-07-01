@@ -197,6 +197,36 @@ const O3Icon = () => (
   </svg>
 );
 
+const PM25Icon = () => (
+  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M3 8h10c1.5 0 2.5-1 2.5-2.5S14.5 3 13 3"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+    <path
+      d="M3 16h14c1.5 0 2.5 1 2.5 2.5S18.5 21 17 21"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    />
+    <path
+      d="M3 12h18"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      opacity="0.8"
+    />
+    <circle cx="7" cy="5" r="1.2" fill="currentColor" />
+    <circle cx="18" cy="7" r="1.2" fill="currentColor" />
+    <circle cx="10" cy="14" r="1.2" fill="currentColor" />
+    <circle cx="15" cy="10" r="1.2" fill="currentColor" />
+    <circle cx="21" cy="15" r="1.2" fill="currentColor" />
+    <circle cx="12" cy="18" r="1.2" fill="currentColor" />
+  </svg>
+);
+
 const pollutants = [
   {
     key: 'co',
@@ -225,6 +255,13 @@ const pollutants = [
     formula: <span className="pollutant-formula">O<sub>3</sub></span>,
     name: 'Ozone',
     Icon: O3Icon,
+  },
+  {
+    key: 'pm25',
+    path: '/dashboard/pm25',
+    formula: <span className="pollutant-formula">PM<sub>2.5</sub></span>,
+    name: 'Particulate Matter 2.5',
+    Icon: PM25Icon,
   },
 ];
 

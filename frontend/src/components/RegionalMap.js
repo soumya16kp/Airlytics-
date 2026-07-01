@@ -67,6 +67,7 @@ const POLLUTANT_INFO = {
     no2: { name: 'NO₂', unit: 'µmol/m²', safeLabel: '20',   extremeLabel: '80+',   modelTag: 'XGBoost' },
     so2: { name: 'SO₂', unit: 'DU',      safeLabel: '10',   extremeLabel: '80+',   modelTag: 'Triple-Stack + Ridge' },
     o3:  { name: 'O₃',  unit: 'DU',      safeLabel: '50',   extremeLabel: '160+',  modelTag: 'Triple-Stack' },
+    pm25: { name: 'PM₂.₅', unit: 'µg/m³', safeLabel: '15',  extremeLabel: '150+',  modelTag: 'Random Forest' },
 };
 
 // Sentinel-5P pixel resolution ≈ 5.5 km → radius in metres
@@ -76,6 +77,7 @@ const MODEL_RESOLUTION = {
     no2: { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
     so2: { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
     o3:  { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
+    pm25: { radius: SENTINEL_RADIUS,  label: '~5.5 x 5.5 km Sentinel pixel',  zoom: 12 },
 };
 
 // Colour scale per pollutant
@@ -109,6 +111,14 @@ const getPollutantColor = (v, type) => {
             if (v < 140) return '#ea580c';
             if (v < 160) return '#ef4444';
             return '#991b1b';
+        case 'pm25':
+            if (v < 15) return '#059669';
+            if (v < 35) return '#10b981';
+            if (v < 55) return '#84cc16';
+            if (v < 75) return '#f59e0b';
+            if (v < 115) return '#f97316';
+            if (v < 150) return '#ea580c';
+            return '#ef4444';
         default: // co
             if (v < 0.025) return '#059669';
             if (v < 0.030) return '#10b981';
@@ -125,7 +135,7 @@ const formatLabel = (v, type) => {
     if (v == null) return '—';
     const info = POLLUTANT_INFO[type] || POLLUTANT_INFO.co;
     if (type === 'no2') return v.toExponential(2) + ' ' + info.unit;
-    if (type === 'so2' || type === 'o3') return v.toFixed(2) + ' ' + info.unit;
+    if (type === 'so2' || type === 'o3' || type === 'pm25') return v.toFixed(2) + ' ' + info.unit;
     return v.toFixed(6) + ' ' + info.unit;
 };
 
@@ -202,6 +212,7 @@ const RegionalMap = ({ townName, currentCOValue, townCoords, onDataUpdate, pollu
                 no2: locationService.predictNO2At,
                 so2: locationService.predictSO2At,
                 o3:  locationService.predictO3At,
+                pm25: locationService.predictPM25At,
             };
             const fn = predictFns[pollutantType] || predictFns.co;
             let res = await fn(lat, lng);

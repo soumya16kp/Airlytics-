@@ -127,6 +127,16 @@ const POLLUTANT_DETAILS = {
       'Poor': { health: "Reduced lung function. Chest pain and inflammation of the airways.", action: "Stay indoors between 12 PM and 5 PM. Use air conditioning." },
       'Hazardous': { health: "Severe lung damage. Ozone levels are dangerously high.", action: "Avoid all outdoor exertion. Keep vulnerable people in filtered air." }
     }
+  },
+  pm25: {
+    description: "Fine Particulate Matter (PM₂.₅) represents tiny airborne particles that are 2.5 micrometers or less in width. Because of their size, they can bypass the nose and throat and penetrate deep into the lungs, sometimes entering the bloodstream.",
+    health_advice: {
+      'Excellent': { health: "Air quality is highly clean. No respiratory risks.", action: "Excellent for all outdoor activities." },
+      'Good': { health: "Safe PM₂.₅ levels. Very little risk of exposure.", action: "Normal outdoor activities are recommended." },
+      'Moderate': { health: "Sensitive individuals (those with respiratory/heart conditions) may experience throat irritation or cough.", action: "Sensitive groups should reduce heavy outdoor work. General public can continue outdoor activities." },
+      'Poor': { health: "Increased likelihood of respiratory symptoms, throat irritation, and breathing discomfort.", action: "Avoid prolonged outdoor exposure. Keep windows closed and run indoor air filters if available." },
+      'Hazardous': { health: "Dangerous PM₂.₅ levels. Severe threat of cardiovascular and respiratory issues for everyone.", action: "STAY INDOORS. Keep doors and windows closed. Wear high-filtration (N95) masks if outdoors." }
+    }
   }
 };
 
@@ -571,6 +581,10 @@ const Dashboard = ({ pollutantType = 'co' }) => {
           <NavLink to="/dashboard/o3" className={({ isActive }) => `pollutant-tab ${isActive ? 'active' : ''}`}>
             <svg className="pollutant-tab-icon" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.5" stroke="currentColor" strokeWidth="1.5"/><line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
             <span>O<sub>3</sub></span>
+          </NavLink>
+          <NavLink to="/dashboard/pm25" className={({ isActive }) => `pollutant-tab ${isActive ? 'active' : ''}`}>
+            <svg className="pollutant-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M3 8h10c1.5 0 2.5-1 2.5-2.5S14.5 3 13 3"/><path d="M3 16h14c1.5 0 2.5 1 2.5 2.5S18.5 21 17 21"/><path d="M3 12h18"/><circle cx="7" cy="5" r="1.2" fill="currentColor"/><circle cx="18" cy="7" r="1.2" fill="currentColor"/><circle cx="10" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="10" r="1.2" fill="currentColor"/><circle cx="21" cy="15" r="1.2" fill="currentColor"/><circle cx="12" cy="18" r="1.2" fill="currentColor"/></svg>
+            <span>PM<sub>2.5</sub></span>
           </NavLink>
           <NavLink to="/dashboard/ground" className={({ isActive }) => `pollutant-tab ${isActive ? 'active' : ''}`}>
             <svg className="pollutant-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
