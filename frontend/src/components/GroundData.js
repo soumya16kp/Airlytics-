@@ -201,36 +201,63 @@ const GroundData = ({ latitude, longitude }) => {
 
   return (
     <div className="chart-card full card-enter" style={{ background: '#fdfdfe', minHeight: '400px' }}>
-      <div className="card-header" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '20px', marginBottom: '30px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <div className="title-with-badge">
-            <h3 style={{ fontSize: '24px', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Compass className="text-primary" size={24} /> Ground Monitoring Station Analysis
-            </h3>
-            {data && (
-              <span className={`badge-ai ${data.isFallback ? 'warning' : 'primary'}`} style={{ marginLeft: '12px' }}>
-                {data.isFallback ? 'Fallback Model' : 'Verified Ground'}
-              </span>
-            )}
+      <div className="card-header" style={{
+        borderBottom: '1px solid var(--border-subtle)',
+        paddingBottom: '24px',
+        marginBottom: '32px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px'
+      }}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+          width: '100%'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{
+              background: 'var(--primary-glow)',
+              padding: '10px',
+              borderRadius: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <Compass className="text-primary" size={24} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', margin: 0, letterSpacing: '-0.02em' }}>
+                  Ground Station Analysis
+                </h3>
+                {data && (
+                  <span className={`badge-ai ${data.isFallback ? 'warning' : 'primary'}`} style={{ margin: 0 }}>
+                    {data.isFallback ? 'Fallback Ensemble Active' : 'Regulatory Ground Source'}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
+          
           <button
             onClick={fetchGroundData}
             disabled={loading}
-            className="auth-btn"
+            className="btn-primary"
             style={{
-              width: 'auto',
               margin: 0,
-              padding: '10px 24px',
-              borderRadius: '14px',
-              fontSize: '14px',
-              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.2)',
+              padding: '10px 20px',
+              fontSize: '13px',
             }}
           >
-            <RefreshCw size={16} className={loading ? 'spin' : ''} />
-            {loading ? 'Connecting to Ground Center...' : 'Fetch Ground Station Data'}
+            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            {loading ? 'Connecting Center...' : 'Sync Ground Data'}
           </button>
         </div>
-        <p style={{ marginTop: '8px', fontSize: '14px', color: 'var(--text-muted)' }}>
+        
+        <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
           Retrieves real-time ground-level measurements directly from regulatory ambient air quality stations.
         </p>
       </div>
