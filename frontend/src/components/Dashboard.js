@@ -542,7 +542,7 @@ const Dashboard = ({ pollutantType = 'co' }) => {
       <nav className="dashboard-nav">
         <div className="navbar-logo">
           <Wind className="nav-icon" />
-          <span>Odisha CarbonInsight</span>
+          <span>Aerolytics</span>
         </div>
 
         <div className="pollutant-tabs">

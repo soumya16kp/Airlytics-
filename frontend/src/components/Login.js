@@ -47,7 +47,7 @@ const Login = () => {
             Live Tracking
           </div>
           <h1>
-            AI-Powered <span>Carbon</span> Monitoring & Prediction
+            AI-Powered <span>Multi Pollutant </span> Monitoring & Prediction
           </h1>
           <p>
             Real-time emissions tracking from town to state level.
@@ -64,23 +64,23 @@ const Login = () => {
             <div className="auth-brand-icon">
               <Leaf />
             </div>
-            <span className="auth-brand-text">Odisha CarbonInsight</span>
+            <span className="auth-brand-text">Aerolytics</span>
           </div>
 
           <div className="auth-header">
             <h2>Welcome Back</h2>
             <p>
-              Monitoring active across 30 Odisha districts
+              Monitoring active across 36 states and UT
             </p>
           </div>
 
           <div className="auth-stats">
             <div className="auth-stat">
-              <span className="auth-stat-value">4.2M</span>
-              <span className="auth-stat-label">Tons Tracked</span>
+              <span className="auth-stat-value">Full</span>
+              <span className="auth-stat-label">Indian Stats</span>
             </div>
             <div className="auth-stat">
-              <span className="auth-stat-value">98.2%</span>
+              <span className="auth-stat-value">High</span>
               <span className="auth-stat-label">Accuracy</span>
             </div>
             <div className="auth-stat">
