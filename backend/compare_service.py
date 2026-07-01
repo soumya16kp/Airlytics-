@@ -38,6 +38,7 @@ POLLUTANT_CONFIG = {
     'so2': {'who_limit': 40.0,  'unit': 'µg/m³', 'multiplier': 1_000_000.0, 'molar_mass': 64.07},
     'o3':  {'who_limit': 100.0, 'unit': 'µg/m³', 'multiplier': 1_000.0,     'molar_mass': 48.00},
     'co':  {'who_limit': 4.0,   'unit': 'mg/m³', 'multiplier': 1_000.0,     'molar_mass': 28.01},
+    'pm25': {'who_limit': 15.0, 'unit': 'µg/m³', 'multiplier': 1.0,        'molar_mass': 1000.0},
 }
 
 MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -52,7 +53,7 @@ def convert_gee_value(raw_val, pollutant):
         return None
     cfg = POLLUTANT_CONFIG[pollutant]
     converted = raw_val * cfg['multiplier'] * cfg['molar_mass'] / 1000.0
-    return round(converted, 8)
+    return round(float(converted), 8)
 
 
 # ─── Statistics ──────────────────────────────────────────────────────────────
@@ -108,6 +109,9 @@ def _get_predictor(pollutant):
     elif pollutant == 'o3':
         from predictor.o3_predictor import o3_predictor
         return o3_predictor
+    elif pollutant == 'pm25':
+        from predictor.pm25_predictor import pm25_predictor
+        return pm25_predictor
     else:
         from predictor.co_predictor import co_predictor
         return co_predictor
@@ -205,26 +209,39 @@ def _fetch_gee_monthly_cached(lat_r, lon_r, pollutant, year):
         return {m: None for m in range(1, 13)}
 
 def get_gee_monthly(lat, lon, pollutant, year):
+    api = None
     if pollutant == 'no2':
         from extractor_service import no2_api as api
+    elif pollutant == 'pm25':
+        from extractor_service import pm25_api as api
+    elif pollutant == 'o3':
+        from extractor_service import o3_api as api
+    elif pollutant == 'co':
+        from extractor_service import co_api as api
+    elif pollutant == 'so2':
+        from extractor_service import so2_api as api
+
+    if api is not None:
         try:
             df = api.get_data_for_coordinate(lat, lon, year)
             if not df.empty:
                 import pandas as pd
-                print(f"[CompareService DEBUG] NO2 HF data columns: {list(df.columns)}")
-                print(f"[CompareService DEBUG] NO2 HF data sample row: {df.iloc[0].to_dict()}")
+                print(f"[CompareService DEBUG] {pollutant.upper()} HF data columns: {list(df.columns)}")
+                if len(df) > 0:
+                    print(f"[CompareService DEBUG] {pollutant.upper()} HF data sample row: {df.iloc[0].to_dict()}")
                 df['parsed_date'] = pd.to_datetime(df['date'] if 'date' in df.columns else df['parsed_date'])
                 df['month'] = df['parsed_date'].dt.month
-                no2_col = 'no2_level' if 'no2_level' in df.columns else 'no2'
-                print(f"[CompareService DEBUG] Using NO2 column: '{no2_col}', "
-                      f"sample value: {df[no2_col].iloc[0]}, mean: {df[no2_col].mean():.10f}")
-                monthly_avg = df.groupby('month')[no2_col].mean().to_dict()
-                print(f"[CompareService DEBUG] NO2 HF monthly avg (source=HuggingFace): {monthly_avg}")
+                val_col = f"{pollutant}_level" if f"{pollutant}_level" in df.columns else pollutant
+                if len(df) > 0:
+                    print(f"[CompareService DEBUG] Using {pollutant.upper()} column: '{val_col}', "
+                          f"sample value: {df[val_col].iloc[0]}, mean: {df[val_col].mean():.10f}")
+                monthly_avg = df.groupby('month')[val_col].mean().to_dict()
+                print(f"[CompareService DEBUG] {pollutant.upper()} HF monthly avg (source=HuggingFace): {monthly_avg}")
                 return {m: monthly_avg.get(m, None) for m in range(1, 13)}
             else:
-                print(f"[CompareService DEBUG] NO2 HF returned empty DataFrame, falling back to GEE.")
+                print(f"[CompareService DEBUG] {pollutant.upper()} HF returned empty DataFrame, falling back to GEE.")
         except Exception as e:
-            print(f"[CompareService] NO2 Hugging Face monthly extraction failed: {e}")
+            print(f"[CompareService] {pollutant.upper()} Hugging Face monthly extraction failed: {e}")
 
     # Use rounded coordinates for stable caching
     return _fetch_gee_monthly_cached(round(lat, 4), round(lon, 4), pollutant, year)
@@ -238,9 +255,20 @@ def get_gee_for_dates(lat, lon, pollutant, dates, window_days=1):
     Returns list of {date_str, gee_actual_raw} — one entry per date.
     Performs server-side batching using ee.List.map to avoid looping getInfo().
     """
-    if pollutant == 'no2' and dates:
-        years = list(set(d.year for d in dates))
+    api = None
+    if pollutant == 'no2':
         from extractor_service import no2_api as api
+    elif pollutant == 'pm25':
+        from extractor_service import pm25_api as api
+    elif pollutant == 'o3':
+        from extractor_service import o3_api as api
+    elif pollutant == 'co':
+        from extractor_service import co_api as api
+    elif pollutant == 'so2':
+        from extractor_service import so2_api as api
+
+    if api is not None and dates:
+        years = list(set(d.year for d in dates))
         try:
             results = []
             year_query = years[0] if len(years) == 1 else "*"
@@ -248,8 +276,8 @@ def get_gee_for_dates(lat, lon, pollutant, dates, window_days=1):
             if not df.empty:
                 import pandas as pd
                 df['parsed_date'] = pd.to_datetime(df['date'] if 'date' in df.columns else df['parsed_date']).dt.date
-                no2_col = 'no2_level' if 'no2_level' in df.columns else 'no2'
-                daily_avg = df.groupby('parsed_date')[no2_col].mean().to_dict()
+                val_col = f"{pollutant}_level" if f"{pollutant}_level" in df.columns else pollutant
+                daily_avg = df.groupby('parsed_date')[val_col].mean().to_dict()
                 
                 for d in dates:
                     val = daily_avg.get(d, None)
@@ -263,7 +291,7 @@ def get_gee_for_dates(lat, lon, pollutant, dates, window_days=1):
                     results.append({'date_str': d.isoformat(), 'gee_actual_raw': val})
                 return results
         except Exception as e:
-            print(f"[CompareService] NO2 Hugging Face date extraction failed: {e}")
+            print(f"[CompareService] {pollutant.upper()} Hugging Face date extraction failed: {e}")
 
     if ee is None:
         return [{'date_str': d.isoformat(), 'gee_actual_raw': None} for d in dates]

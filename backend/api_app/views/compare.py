@@ -32,7 +32,7 @@ class CompareView(APIView):
             except ValueError:
                 return Response({'error': 'year must be a valid integer or "all".'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if pollutant not in ['co', 'no2', 'so2', 'o3']:
+        if pollutant not in ['co', 'no2', 'so2', 'o3', 'pm25']:
             return Response({'error': f'Unsupported pollutant: {pollutant}'}, status=status.HTTP_400_BAD_REQUEST)
 
         if mode not in ['monthly', 'weekly', 'daily', 'yearly']:
