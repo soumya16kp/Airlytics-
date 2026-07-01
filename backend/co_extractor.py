@@ -1,13 +1,13 @@
-import duckdb
+﻿import duckdb
 import os
 import pandas as pd
 
-class NO2HuggingFaceAPI:
+class COHuggingFaceAPI:
     def __init__(self, hf_token=None):
         """
         Initializes the connection to Hugging Face using DuckDB.
         """
-        self.base_path = "hf://datasets/ObitUchiha91/Airlytics_data_set/NO2"
+        self.base_path = "hf://datasets/ObitUchiha91/Airlytics_data_set/CO"
         
         # Initialize DuckDB connection
         self.con = duckdb.connect()
@@ -17,7 +17,7 @@ class NO2HuggingFaceAPI:
             self.con.execute("INSTALL httpfs;")
             self.con.execute("LOAD httpfs;")
         except Exception as e:
-            print(f"[NO2Extractor] Failed to install/load httpfs extension: {e}")
+            print(f"[COExtractor] Failed to install/load httpfs extension: {e}")
         
         # Set up Hugging Face authentication
         # If no token is passed, it looks for an environment variable named HF_TOKEN
@@ -25,11 +25,11 @@ class NO2HuggingFaceAPI:
         if token:
             try:
                 self.con.execute(f"CREATE SECRET hf_secret (TYPE HUGGINGFACE, TOKEN '{token}');")
-                print("[NO2Extractor] Successfully authenticated with Hugging Face.")
+                print("[COExtractor] Successfully authenticated with Hugging Face.")
             except Exception as e:
-                print(f"[NO2Extractor] Failed to create Hugging Face secret: {e}")
+                print(f"[COExtractor] Failed to create Hugging Face secret: {e}")
         else:
-            print("[NO2Extractor] No HF_TOKEN provided. Dataset is public, so DuckDB should still work.")
+            print("[COExtractor] No HF_TOKEN provided. Dataset is public, so DuckDB should still work.")
 
     def get_by_state_and_year(self, state_name, year):
         """
@@ -75,8 +75,8 @@ class NO2HuggingFaceAPI:
             SELECT 
                 file_name() as source_file,
                 COUNT(*) as total_readings,
-                AVG(no2_level) as mean_no2,
-                MAX(no2_level) as max_no2
+                AVG(co_level) as mean_co,
+                MAX(co_level) as max_co
             FROM '{file_path}'
             GROUP BY source_file
         """
@@ -97,11 +97,11 @@ class NO2HuggingFaceAPI:
                 tolerance = 0.05
                 df = self.get_by_bounding_box(lat - tolerance, lat + tolerance, lon - tolerance, lon + tolerance, year)
                 if df.empty:
-                    print(f"[NO2Extractor] Tight bbox empty, widening to 0.2 for ({lat}, {lon})")
+                    print(f"[COExtractor] Tight bbox empty, widening to 0.2 for ({lat}, {lon})")
                     df = self.get_by_bounding_box(lat - 0.2, lat + 0.2, lon - 0.2, lon + 0.2, year)
                 
                 if not df.empty:
-                    print(f"[NO2Extractor] HF data: {len(df)} rows, columns: {list(df.columns)}")
+                    print(f"[COExtractor] HF data: {len(df)} rows, columns: {list(df.columns)}")
                     lat_col = 'latitude' if 'latitude' in df.columns else 'lat'
                     lon_col = 'longitude' if 'longitude' in df.columns else 'lon'
                     
@@ -109,13 +109,13 @@ class NO2HuggingFaceAPI:
                     min_dist = df['dist'].min()
                     closest_coords = df[df['dist'] == min_dist]
                     closest_coords = closest_coords.drop(columns=['dist'])
-                    print(f"[NO2Extractor] ✅ SOURCE=HuggingFace for ({lat}, {lon}), "
+                    print(f"[COExtractor] âœ… SOURCE=HuggingFace for ({lat}, {lon}), "
                           f"closest={len(closest_coords)} rows, dist={min_dist:.6f}")
                     return closest_coords
                 else:
-                    print(f"[NO2Extractor] ⚠ HF returned empty for ({lat}, {lon}), year={year}")
+                    print(f"[COExtractor] âš  HF returned empty for ({lat}, {lon}), year={year}")
             except Exception as e:
-                print(f"[NO2Extractor] ❌ Hugging Face query failed: {e}. Falling back to local CSV.")
+                print(f"[COExtractor] âŒ Hugging Face query failed: {e}. Falling back to local CSV.")
 
         # Fallback: Query local CSV files in `no2_weather_data/`
         try:
@@ -124,12 +124,12 @@ class NO2HuggingFaceAPI:
             csv_dir = os.path.join(project_dir, "no2_weather_data")
             
             if year == "*":
-                file_pattern = os.path.join(csv_dir, "NO2_Data_Improv*.csv")
+                file_pattern = os.path.join(csv_dir, "CO_Data_Improv*.csv")
             else:
-                file_pattern = os.path.join(csv_dir, f"NO2_Data_Improv{year}.csv")
+                file_pattern = os.path.join(csv_dir, f"CO_Data_Improv{year}.csv")
             
             if not os.path.exists(csv_dir):
-                print(f"[NO2Extractor] Local CSV directory not found at {csv_dir}")
+                print(f"[COExtractor] Local CSV directory not found at {csv_dir}")
                 return pd.DataFrame()
 
             # Query the CSV using DuckDB
@@ -156,10 +156,10 @@ class NO2HuggingFaceAPI:
                 min_dist = df['dist'].min()
                 closest_coords = df[df['dist'] == min_dist]
                 closest_coords = closest_coords.drop(columns=['dist'])
-                print(f"[NO2Extractor] Loaded closest coordinates from local CSV fallback for ({lat}, {lon})")
+                print(f"[COExtractor] Loaded closest coordinates from local CSV fallback for ({lat}, {lon})")
                 return closest_coords
         except Exception as e:
-            print(f"[NO2Extractor] Local CSV query failed: {e}")
+            print(f"[COExtractor] Local CSV query failed: {e}")
             
         return pd.DataFrame()
 
@@ -168,3 +168,4 @@ class NO2HuggingFaceAPI:
             self.con.close()
         except Exception:
             pass
+

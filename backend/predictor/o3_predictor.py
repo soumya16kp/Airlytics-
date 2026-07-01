@@ -19,7 +19,10 @@ from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
 from grid_data_service import get_grid_data_service
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'OdishaO3Model.pkl')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'o3_prediction_model.pkl')
+HIST_LOOKUP_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'o3_hist_lookup.csv')
+ANCHOR_LOOKUP_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'o3_anchor_lookup.csv')
+UNIQUE_COORDS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'o3_unique_coords.csv')
 
 # Default O3 lag value (mean tropospheric O3 in DU for Odisha region)
 DEFAULT_O3_LAG = 35.0
@@ -36,10 +39,14 @@ class O3Predictor:
         self._features = None
         self._ready = False
         self._error = None
+        self._hist_lookup = None
+        self._unique_coords = None
 
     def _load(self):
         if self._ready or self._error:
             return
+        import joblib
+        import warnings
         try:
             # Try HuggingFace first, then fall back to local
             hf_token = os.environ.get("HF_TOKEN", None)
@@ -47,27 +54,69 @@ class O3Predictor:
                 from huggingface_hub import hf_hub_download
                 o3_model_path = hf_hub_download(
                     repo_id="ObitUchiha91/airlytics-models",
-                    filename="o3_model_new.pkl",
+                    filename="o3_prediction_model.pkl",
                     token=hf_token
                 )
-                print("[O3] Model downloaded from Hugging Face.")
+                try:
+                    hist_lookup_path = hf_hub_download(
+                        repo_id="ObitUchiha91/airlytics-models",
+                        filename="o3_hist_lookup.csv",
+                        token=hf_token
+                    )
+                except Exception:
+                    hist_lookup_path = hf_hub_download(
+                        repo_id="ObitUchiha91/airlytics-models",
+                        filename="o3_anchor_lookup.csv",
+                        token=hf_token
+                    )
+                try:
+                    unique_coords_path = hf_hub_download(
+                        repo_id="ObitUchiha91/airlytics-models",
+                        filename="o3_unique_coords.csv",
+                        token=hf_token
+                    )
+                except Exception:
+                    unique_coords_path = None
+                print("[O3] Model and CSV files downloaded from Hugging Face.")
             except Exception as hf_err:
                 print(f"[O3] HF download failed ({hf_err}), using local model.")
                 o3_model_path = MODEL_PATH
-            bundle = joblib.load(o3_model_path)
+                if os.path.exists(HIST_LOOKUP_PATH):
+                    hist_lookup_path = HIST_LOOKUP_PATH
+                elif os.path.exists(ANCHOR_LOOKUP_PATH):
+                    hist_lookup_path = ANCHOR_LOOKUP_PATH
+                else:
+                    hist_lookup_path = None
+                unique_coords_path = UNIQUE_COORDS_PATH if os.path.exists(UNIQUE_COORDS_PATH) else None
+
+            # Fail fast if lookup CSV is missing
+            if not hist_lookup_path or not os.path.exists(hist_lookup_path):
+                raise RuntimeError("Missing O3 lookup CSV file (o3_hist_lookup.csv or o3_anchor_lookup.csv)")
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                bundle = joblib.load(o3_model_path)
+
             self._models = {
                 'xgb':  bundle.get('xgboost'),
                 'cat':  bundle.get('catboost'),
+                'lgbm': bundle.get('lightgbm'),
             }
             self._kmeans  = bundle.get('kmeans')
             self._features = bundle.get('features')
+            
+            # Load DataFrames
+            self._hist_lookup = pd.read_csv(hist_lookup_path)
+            if unique_coords_path:
+                self._unique_coords = pd.read_csv(unique_coords_path)
+
             self._ready = True
-            print(f"[O3] Model loaded: {bundle.get('version', 'unknown')}")
+            print(f"[O3] Model loaded successfully.")
         except Exception as e:
             self._error = f"Cannot load O3 model: {e}"
             print(f"[O3] ERROR: {self._error}")
 
-    def _build_features(self, lat, lon, doy, weather, elev=None, pop=None):
+    def _build_features(self, lat, lon, doy, weather, elev=None, pop=None, hist_norm=DEFAULT_O3_LAG):
         """Build the 15-feature vector for one prediction."""
         import warnings
         w = weather
@@ -91,8 +140,6 @@ class O3Predictor:
         inversion_idx = _temp_k / (_pbl + 1.0)
         emission_sun_interaction = _pop * _solar
         ventilation = _pbl * _ws
-        hist_norm = DEFAULT_O3_LAG
-        
         # We need hour if provided, else use midday (12)
         hour_val = w.get('hour', 12)
         if hour_val is None: hour_val = 12
@@ -160,6 +207,28 @@ class O3Predictor:
         result['is_custom'] = True
         return result
 
+    def _get_cluster_hist_norm(self, lat, lon, month):
+        """Find closest cluster via unique_coords and get hist_norm value for month."""
+        if self._hist_lookup is None:
+            return None
+        if self._unique_coords is not None:
+            try:
+                uc = self._unique_coords.copy()
+                uc['dist'] = (uc['lat_r'] - round(lat, 1))**2 + (uc['lon_r'] - round(lon, 1))**2
+                best = uc.loc[uc['dist'].idxmin()]
+                cluster = int(best['cluster'])
+
+                row = self._hist_lookup[
+                    (self._hist_lookup['cluster'] == cluster) &
+                    (self._hist_lookup['month'] == month)
+                ]
+                if len(row) > 0:
+                    col_name = 'hist_norm' if 'hist_norm' in row.columns else ('anchor' if 'anchor' in row.columns else row.columns[-1])
+                    return float(row.iloc[0][col_name])
+            except Exception as e:
+                print(f"[O3] Cluster lookup failed: {e}")
+        return None
+
     def _predict_timeline(self, lat, lon, range_str, overrides=None):
         """Generate timeline of real model predictions."""
         points = generate_timeline_points(range_str)
@@ -173,11 +242,15 @@ class O3Predictor:
         
         pop = float(overrides.get('pop', grid_pop)) if overrides else grid_pop
 
+        # Dynamic fallback baseline if CSV unique_coords/hist_lookup lookup doesn't resolve
+        hist_norm_base = None
+
         timeline = []
         all_values = []
 
         for pt in points:
             doy = pt['day_of_year']
+            month = pt['month']
             hour = pt.get('hour')
             weather = get_weather_for_day(lat, lon, doy, pt['year'], pollutant='o3', hour=hour)
             
@@ -189,7 +262,22 @@ class O3Predictor:
             # pass hour to _build_features
             weather['hour'] = hour
 
-            raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop)
+            # Lookup hist_norm per month
+            hist_norm_val = self._get_cluster_hist_norm(lat, lon, month)
+            if hist_norm_val is None:
+                if hist_norm_base is None:
+                    from o3_extractor import O3HuggingFaceAPI
+                    api = O3HuggingFaceAPI()
+                    try:
+                        hist_df = api.get_data_for_coordinate(lat, lon, "2023")
+                        hist_norm_base = hist_df['o3_level'].mean() if not hist_df.empty else DEFAULT_O3_LAG
+                    except Exception:
+                        hist_norm_base = DEFAULT_O3_LAG
+                    finally:
+                        api.close()
+                hist_norm_val = hist_norm_base
+
+            raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop, hist_norm=hist_norm_val)
             value = self._predict_single(raw)
 
             if value is None:
@@ -227,7 +315,8 @@ class O3Predictor:
         """Helper for historical_data_service to run the full pipeline."""
         # Note: o3_predictor build_features doesn't take month, but historical service passes it 
         # so we ignore the month parameter here
-        raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop)
+        # Note: o3_predictor doesn't compute hist_norm again, passing DEFAULT_O3_LAG for comparison table
+        raw = self._build_features(lat, lon, doy, weather, elev=elev, pop=pop, hist_norm=DEFAULT_O3_LAG)
         return self._predict_single(raw)
 
 

@@ -18,6 +18,7 @@ Model features (35):
 import os
 import math
 import warnings
+import traceback
 import numpy as np
 import pandas as pd
 
@@ -26,6 +27,8 @@ from timeline_utils import generate_timeline_points, day_sin, day_cos
 from grid_data_service import get_grid_data_service
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'co_prediction_model.pkl')
+ANCHOR_LOOKUP_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'co_anchor_lookup.csv')
+UNIQUE_COORDS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'co_unique_coords.csv')
 
 MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -55,14 +58,32 @@ class COPredictor:
                     filename="co_prediction_model.pkl",
                     token=hf_token
                 )
-                print("[CO] Model downloaded from Hugging Face.")
+                anchor_lookup_path = hf_hub_download(
+                    repo_id="ObitUchiha91/airlytics-models",
+                    filename="co_anchor_lookup.csv",
+                    token=hf_token
+                )
+                unique_coords_path = hf_hub_download(
+                    repo_id="ObitUchiha91/airlytics-models",
+                    filename="co_unique_coords.csv",
+                    token=hf_token
+                )
+                print("[CO] Model and CSV files downloaded from Hugging Face.")
             except Exception as hf_err:
                 print(f"[CO] HF download failed ({hf_err}), using local model.")
                 model_path = MODEL_PATH
+                anchor_lookup_path = ANCHOR_LOOKUP_PATH
+                unique_coords_path = UNIQUE_COORDS_PATH
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 bundle = joblib.load(model_path)
+
+            print(type(bundle))
+            if isinstance(bundle, dict):
+                print(bundle.keys())
+            else:
+                print("Bundle is not a dict:", type(bundle))
 
             self._bundle   = bundle
             self._models   = {
@@ -72,15 +93,19 @@ class COPredictor:
             }
             self._scaler        = bundle['scaler']
             self._features      = bundle['features']
-            self._anchor_lookup = bundle['anchor_lookup']    # cluster, month → anchor
-            self._unique_coords = bundle['unique_coords']    # lat_r, lon_r, cluster
+            self._anchor_lookup = pd.read_csv(anchor_lookup_path)    # cluster, month → anchor
+            self._unique_coords = pd.read_csv(unique_coords_path)    # lat_r, lon_r, cluster
             self._global_mean   = float(bundle.get('global_mean', 0.039))
             self._ready = True
             print(f"[CO] Model loaded. {len(self._features)} features. "
                   f"{len(self._unique_coords)} training coords.")
         except Exception as e:
-            self._error = f"Cannot load CO model: {e}"
-            print(f"[CO] ERROR: {self._error}")
+            print("=" * 80)
+            traceback.print_exc()
+            print("=" * 80)
+
+            self._error = repr(e)
+            print(f"[CO] ERROR: {repr(e)}")
 
     def _get_cluster_anchor(self, lat, lon, month):
         """Find closest cluster via unique_coords and get anchor value for month."""

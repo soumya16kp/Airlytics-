@@ -10,6 +10,8 @@ from .views import (
     PredictO3View, PredictO3AtCoordsView, MapDataO3View,
     # SO2
     PredictSO2View, PredictSO2AtCoordsView, MapDataSO2View,
+    # PM2.5
+    PredictPM25View, PredictPM25AtCoordsView, MapDataPM25View,
     # AI
     PollutionInsightView,
     # OpenAQ Proxy
@@ -51,6 +53,12 @@ urlpatterns = [
     path('predict-so2/',       PredictSO2View.as_view(),          name='predict-so2'),
     path('predict-so2-at/',    PredictSO2AtCoordsView.as_view(),  name='predict-so2-at'),
     path('map-data-so2/',      MapDataSO2View.as_view(),          name='map-data-so2'),
+
+    # PM2.5 endpoints
+    path('predict-pm25/',      PredictPM25View.as_view(),         name='predict-pm25'),
+    path('predict-pm25-at/',   PredictPM25AtCoordsView.as_view(), name='predict-pm25-at'),
+    path('map-data-pm25/',     MapDataPM25View.as_view(),         name='map-data-pm25'),
+
     # AI Insight
     path('pollution-insight/', PollutionInsightView.as_view(),    name='pollution-insight'),
 ]

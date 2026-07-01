@@ -63,10 +63,26 @@ class HistoricalDataService:
 
         return weather
 
-    def get_monthly_no2_data(self, lat, lon):
-        from no2_extractor import NO2HuggingFaceAPI
+    def get_monthly_hf_data(self, lat, lon):
         import pandas as pd
-        api = NO2HuggingFaceAPI()
+        
+        api = None
+        if self._pollutant == 'no2':
+            from no2_extractor import NO2HuggingFaceAPI
+            api = NO2HuggingFaceAPI()
+        elif self._pollutant == 'o3':
+            from o3_extractor import O3HuggingFaceAPI
+            api = O3HuggingFaceAPI()
+        elif self._pollutant == 'co':
+            from co_extractor import COHuggingFaceAPI
+            api = COHuggingFaceAPI()
+        elif self._pollutant == 'so2':
+            from so2_extractor import SO2HuggingFaceAPI
+            api = SO2HuggingFaceAPI()
+        elif self._pollutant == 'pm25':
+            from pm25_extractor import PM25HuggingFaceAPI
+            api = PM25HuggingFaceAPI()
+            
         try:
             df = api.get_data_for_coordinate(lat, lon, "*")
             if df.empty:
@@ -74,7 +90,7 @@ class HistoricalDataService:
                 
             lat_col = 'latitude' if 'latitude' in df.columns else 'lat'
             lon_col = 'longitude' if 'longitude' in df.columns else 'lon'
-            no2_col = 'no2_level' if 'no2_level' in df.columns else 'no2'
+            val_col = f"{self._pollutant}_level" if f"{self._pollutant}_level" in df.columns else self._pollutant
             
             df['parsed_date'] = pd.to_datetime(df['date'] if 'date' in df.columns else df['parsed_date'])
             df['year'] = df['parsed_date'].dt.year
@@ -86,7 +102,7 @@ class HistoricalDataService:
             monthly_results = []
             for (yr, mth), group in grouped:
                 ym_str = f"{yr}-{mth:02d}"
-                avg_no2 = group[no2_col].mean()
+                avg_val = group[val_col].mean()
                 avg_temp = group['temp'].mean() if 'temp' in group.columns else 298.0
                 avg_cld = group['cld'].mean() if 'cld' in group.columns else 0.2
                 avg_u = group['u'].mean() if 'u' in group.columns else 0.0
@@ -105,7 +121,7 @@ class HistoricalDataService:
                     'pbl': avg_pbl,
                     'elev': elev_val or 10.0,
                     'pop': pop_val or 0.0,
-                    'no2': avg_no2,
+                    self._pollutant: avg_val,
                     'day_of_year': med_doy,
                     'month': mth,
                     'year': yr,
@@ -114,7 +130,7 @@ class HistoricalDataService:
                 monthly_results.append(row_dict)
             return monthly_results
         except Exception as e:
-            print(f"[HistoricalDataService] Failed to fetch monthly NO2 data from Hugging Face: {e}")
+            print(f"[HistoricalDataService] Failed to fetch monthly {self._pollutant} data from Hugging Face: {e}")
             return []
         finally:
             api.close()
@@ -123,27 +139,19 @@ class HistoricalDataService:
         """
         Build the 5-row comparison table (H1M → H5Y) dynamically from GEE.
         """
-        if self._pollutant == 'no2':
-            print(f"[HistData-no2] Querying Hugging Face / DuckDB for ({lat}, {lon})...")
-            try:
-                monthly_data = self.get_monthly_no2_data(lat, lon)
-            except Exception as e:
-                print(f"[HistData-no2] Hugging Face Extractor failed: {e}")
-                monthly_data = []
-                
-            if not monthly_data:
-                print(f"[HistData-no2] Hugging Face / DuckDB returned no data. Falling back to Earth Engine.")
-                try:
-                    monthly_data = self.extractor.get_monthly_data(lat, lon, self._pollutant, AVAILABLE_YEARS)
-                except Exception as e:
-                    print(f"[HistData-no2] GEE Fallback Extractor failed: {e}")
-                    return [self._empty_row(p[0], p[1]) for p in COMPARISON_PERIODS]
-        else:
-            print(f"[HistData-{self._pollutant}] Querying Earth Engine for ({lat}, {lon})...")
+        print(f"[HistData-{self._pollutant}] Querying Hugging Face / DuckDB for ({lat}, {lon})...")
+        try:
+            monthly_data = self.get_monthly_hf_data(lat, lon)
+        except Exception as e:
+            print(f"[HistData-{self._pollutant}] Hugging Face Extractor failed: {e}")
+            monthly_data = []
+            
+        if not monthly_data:
+            print(f"[HistData-{self._pollutant}] Hugging Face / DuckDB returned no data. Falling back to Earth Engine.")
             try:
                 monthly_data = self.extractor.get_monthly_data(lat, lon, self._pollutant, AVAILABLE_YEARS)
             except Exception as e:
-                print(f"[HistData-{self._pollutant}] GEE Extractor failed: {e}")
+                print(f"[HistData-{self._pollutant}] GEE Fallback Extractor failed: {e}")
                 return [self._empty_row(p[0], p[1]) for p in COMPARISON_PERIODS]
 
         if not monthly_data:

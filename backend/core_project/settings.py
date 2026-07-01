@@ -18,7 +18,13 @@ def env_list(name, default=''):
 
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'change-me-in-production')
 DEBUG = env_bool('DJANGO_DEBUG', True)
-ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "obituchiha91-airlytics-backend.hf.space",
+    ".hf.space",
+    "proxy.spaces.internal.huggingface.tech",
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',

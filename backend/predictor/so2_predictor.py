@@ -28,7 +28,8 @@ from weather_service import get_weather_for_day, get_elevation
 from timeline_utils import generate_timeline_points, day_sin, day_cos
 from grid_data_service import get_grid_data_service
 
-MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'OdishaSO2Model.pkl')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'so2_prediction_model.pkl')
+CLUSTER_MEANS_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'so2_cluster_means.csv')
 
 DEFAULT_POP = 5000
 
@@ -50,19 +51,47 @@ class SO2Predictor:
     def _load(self):
         if self._ready or self._error:
             return
+        import joblib
+        import warnings
         try:
-            from huggingface_hub import hf_hub_download
             hf_token = os.environ.get("HF_TOKEN", None)
-            so2_model_path = hf_hub_download(repo_id="ObitUchiha91/airlytics-models", filename="OdishaSO2Model.pkl", token=hf_token)
-            bundle = joblib.load(so2_model_path)
+            try:
+                from huggingface_hub import hf_hub_download
+                so2_model_path = hf_hub_download(
+                    repo_id="ObitUchiha91/airlytics-models",
+                    filename="so2_prediction_model.pkl",
+                    token=hf_token
+                )
+                cluster_means_path = hf_hub_download(
+                    repo_id="ObitUchiha91/airlytics-models",
+                    filename="so2_cluster_means.csv",
+                    token=hf_token
+                )
+                print("[SO2] Model and CSV files downloaded from Hugging Face.")
+            except Exception as hf_err:
+                print(f"[SO2] HF download failed ({hf_err}), using local model.")
+                so2_model_path = MODEL_PATH
+                cluster_means_path = CLUSTER_MEANS_PATH
+
+            # Fail fast if cluster means CSV is missing
+            if not cluster_means_path or not os.path.exists(cluster_means_path):
+                raise RuntimeError("Missing SO2 lookup CSV file (so2_cluster_means.csv)")
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                bundle = joblib.load(so2_model_path)
+
             # Exact keys from the model bundle
             self._lgbm          = bundle['lgbm']
             self._cat           = bundle['cat']
             self._xgb           = bundle['xgb']
             self._meta          = bundle['meta']
             self._kmeans        = bundle['kmeans']
-            self._cluster_means = bundle['cluster_means']
             self._features      = bundle['features']
+            
+            # Load DataFrame
+            self._cluster_means = pd.read_csv(cluster_means_path)
+
             self._ready = True
             print(f"[SO2] Model loaded. {self._kmeans.n_clusters} clusters, "
                   f"{len(self._features)} features: {self._features}")
