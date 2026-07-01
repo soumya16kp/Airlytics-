@@ -1106,7 +1106,7 @@ tr:hover td { background: #f1f5f9; }
 
 
 /* AI SPEC GENERATED STYLES */
- & Override Leaflet Styles */
+/* & Override Leaflet Styles */
 .leaflet-popup-content-wrapper {
   border-radius: 16px !important;
   box-shadow: var(--shadow-lg) !important;
@@ -1168,7 +1168,7 @@ tr:hover td { background: #f1f5f9; }
   opacity: 0;
   visibility: hidden;
 }
- Animations */
+/* Animations */
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(16px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1267,7 +1267,7 @@ tr:hover td { background: #f1f5f9; }
   margin-bottom: 12px;
   animation: skeletonPulse 1.5s infinite ease-in-out;
 }
- Layout Enhancements */
+/* Layout Enhancements */
 h1 {
   font-size: clamp(24px, 4vw, 42px);
   margin-bottom: 8px;
