@@ -119,7 +119,7 @@ const HomePage = () => {
           <span className="home-brand-icon">
             <Leaf size={21} aria-hidden="true" />
           </span>
-          <span>CO2 Insight</span>
+          <span>Aerolytics</span>
         </Link>
         <nav className="home-nav-actions" aria-label="Home navigation">
           <Link to="/dashboard/co">Dashboard</Link>
@@ -151,47 +151,7 @@ const HomePage = () => {
             </div>
           </div>
 
-          <div className="hero-visual" aria-hidden="true">
-            <div className="premium-datacard">
-              <div className="datacard-glow" />
-              <div className="datacard-header">
-                <div className="header-left">
-                  <Satellite size={16} />
-                  <span>REAL-TIME SATELLITE FEED</span>
-                </div>
-                <div className="live-badge">
-                  <span className="pulse-dot" />
-                  LIVE
-                </div>
-              </div>
-              <div className="datacard-metrics">
-                <div className="metric-item">
-                  <span>NO₂ Column Density</span>
-                  <strong>0.124</strong>
-                  <span>mol/m²</span>
-                </div>
-                <div className="metric-item">
-                  <span>SO₂ Column Density</span>
-                  <strong>0.042</strong>
-                  <span>mol/m²</span>
-                </div>
-                <div className="metric-item">
-                  <span>O₃ Column Density</span>
-                  <strong>0.268</strong>
-                  <span>mol/m²</span>
-                </div>
-              </div>
-              <div className="datacard-footer">
-                <Radar size={14} />
-                <span>India coverage: 98.7%</span>
-                <div className="trend-indicator">
-                  <TrendingUp size={12} />
-                  <span>+2.1% vs last pass</span>
-                </div>
-              </div>
-              <div className="waveform" />
-            </div>
-          </div>
+
         </section>
 
         <section className="home-stats" aria-label="Platform statistics">

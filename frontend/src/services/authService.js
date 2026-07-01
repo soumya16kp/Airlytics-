@@ -34,7 +34,8 @@ const login = async (username, password) => {
 };
 
 const register = async (username, email, password) => {
-  return publicApi.post('register/', { username, email, password });
+  const response = await publicApi.post('register/', { username, email, password });
+  return response.data;
 };
 
 const logout = () => {

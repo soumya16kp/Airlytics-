@@ -57,7 +57,7 @@ const LocationSelector = ({ onSelect }) => {
         </div>
 
         {!coords && (
-          <button className="auth-btn" onClick={getLocation} disabled={loading}>
+          <button className="btn-primary" onClick={getLocation} disabled={loading} style={{ width: '100%' }}>
             {loading ? 'Fetching Location...' : 'Use My Current Location'}{' '}
             <ArrowRight size={18} />
           </button>
@@ -76,9 +76,10 @@ const LocationSelector = ({ onSelect }) => {
         {error && <p className="error-text">{error}</p>}
 
         <button
-          className={`auth-btn ${coords ? 'explore-btn-active' : ''}`}
+          className={`btn-primary ${coords ? 'explore-btn-active' : ''}`}
           disabled={!coords}
           onClick={handleSave}
+          style={{ width: '100%', marginTop: '16px' }}
         >
           {coords ? 'Explore Dashboard' : 'Allow Location First'}{' '}
           <ArrowRight size={18} />

@@ -69,7 +69,7 @@ const Register = () => {
             Start Tracking <span>Carbon</span> Today
           </h1>
           <p>
-            Become part of Odisha's community dedicated to sustainability and data-driven climate action.
+            Become part of India's community dedicated to sustainability and data-driven climate action.
           </p>
         </div>
       </div>
@@ -82,7 +82,7 @@ const Register = () => {
             <div className="auth-brand-icon">
               <Leaf />
             </div>
-            <span className="auth-brand-text">Odisha CarbonInsight</span>
+            <span className="auth-brand-text">Aerolytics</span>
           </div>
 
           <div className="auth-header">
