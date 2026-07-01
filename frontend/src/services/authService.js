@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const normalizeApiUrl = (url) => (url.endsWith('/') ? url : `${url}/`);
-const API_URL = normalizeApiUrl(process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000/api');
+const API_URL = normalizeApiUrl('https://obituchiha91-airlytics-backend.hf.space/api');
 
 // Public API for login/register
 const publicApi = axios.create({
@@ -34,7 +34,8 @@ const login = async (username, password) => {
 };
 
 const register = async (username, email, password) => {
-  return publicApi.post('register/', { username, email, password });
+  const response = await publicApi.post('register/', { username, email, password });
+  return response.data;
 };
 
 const logout = () => {
